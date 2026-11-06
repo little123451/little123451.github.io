@@ -1,10 +1,69 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <title>Title</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#05070f" />
+  <meta name="description" content="以第一世代飞行属性宝可梦为主题的竖版机战游戏" />
+  <title>飞行机战 · 第一世代</title>
+  <link rel="icon" href="assets/sprites/16.png" />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-    <h1>Hello world</h1>
+  <main id="app">
+    <canvas id="game" width="450" height="800" aria-label="游戏画面"></canvas>
+
+    <section class="overlay" id="loading">
+      <h1>飞行机战</h1>
+      <p class="muted">正在加载图鉴数据与素材…</p>
+      <div class="bar"><i id="load-bar"></i></div>
+      <p class="muted small" id="load-text">0%</p>
+    </section>
+
+    <section class="overlay hidden" id="title">
+      <h1>飞行机战</h1>
+      <p class="muted">第一世代 · 无尽模式</p>
+      <div class="mech-card">
+        <img id="mech-sprite" alt="波波" />
+        <div class="mech-info">
+          <h2 id="mech-name">波波</h2>
+          <p class="muted small" id="mech-types">一般 · 飞行</p>
+          <ul class="stats" id="mech-stats"></ul>
+        </div>
+      </div>
+      <p class="muted small">技能：起风 · 击破特定敌机可掉落技能强化</p>
+      <p class="muted small">后续开发将开放更多机体与收集要素</p>
+      <button id="start-btn" class="primary">开始游戏</button>
+      <p class="muted tiny">拖拽移动 · 自动开火 · Esc 暂停 · M 静音</p>
+    </section>
+
+    <section class="overlay hidden" id="pause">
+      <h1>已暂停</h1>
+      <button id="resume-btn" class="primary">继续</button>
+      <button id="quit-btn">结束本局</button>
+    </section>
+
+    <section class="overlay hidden" id="gameover">
+      <h1>本局结束</h1>
+      <dl class="result">
+        <div><dt>得分</dt><dd id="res-score">0</dd></div>
+        <div><dt>最高分</dt><dd id="res-best">0</dd></div>
+        <div><dt>波次</dt><dd id="res-wave">1</dd></div>
+        <div><dt>等级</dt><dd id="res-level">1</dd></div>
+        <div><dt>技能</dt><dd id="res-skill">Lv.1</dd></div>
+      </dl>
+      <button id="again-btn" class="primary">再来一局</button>
+      <p class="muted tiny">本局数据已记录（统计面板将在后续版本开放）</p>
+    </section>
+
+    <button id="mute-btn" class="mute" aria-label="切换音效">音效 开</button>
+  </main>
+
+  <footer>
+    数据与精灵来自 <a href="https://pokeapi.co/" target="_blank" rel="noopener">PokeAPI</a> ·
+    Pokémon © Nintendo・Game Freak・Creatures · 非商业同人作品
+  </footer>
+
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

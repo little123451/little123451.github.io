@@ -1,0 +1,87 @@
+export const CONFIG = {
+  flags: {
+    typeChart: false,
+    telemetry: true,
+    hitFlash: true,
+  },
+  view: {
+    width: 450,
+    height: 800,
+  },
+  player: {
+    maxHpBase: 60,
+    hpPerStat: 0.8,
+    damageBase: 4,
+    damagePerAttack: 0.12,
+    fireRateBase: 150,
+    fireRatePerSpeed: 0.7,
+    fireRateMin: 60,
+    moveSpeedBase: 240,
+    moveSpeedPerSpeed: 1.2,
+    radius: 20,
+    invulnMs: 1200,
+    levelCap: 20,
+    levelGrowth: 0.04,
+    levelHealPct: 0.2,
+    regenBase: 0.2,
+    regenPerDef: 0.02,
+    regenPerSpDef: 0.02,
+    startLevel: 1,
+    startPos: { x: 225, y: 620 },
+  },
+  exp: {
+    toNext: (level) => 25 + 15 * level,
+    yields: { common: 8, elite: 20, boss: 120 },
+  },
+  enemy: {
+    hpScale: 0.55,
+    contactDamage: 8,
+    maxAlive: 24,
+    maxBullets: 220,
+    bullets: { speedBase: 120, speedPerWave: 6, speedCap: 300, radius: 5 },
+    despawnY: 860,
+  },
+  waves: {
+    durationMs: 22000,
+    difficultyPerWave: 0.06,
+    bossEvery: 5,
+    bossWarningMs: 1800,
+    maxWave: 999,
+  },
+  drops: {
+    magnetRadius: 90,
+    fallSpeed: 55,
+    radius: 16,
+    lifeMs: 12000,
+    scoreValue: 500,
+  },
+  score: {
+    common: 100,
+    elite: 300,
+    boss: 5000,
+    comboWindowMs: 3000,
+    comboMax: 9,
+  },
+  bullets: {
+    playerRadius: 4,
+    playerSpeed: 780,
+    poolSize: 160,
+    enemyPoolSize: 240,
+  },
+  boss: {
+    hpBase: 700,
+    hpPerWave: 200,
+    entryY: 170,
+    contactDamage: 16,
+    radius: 46,
+  },
+  storage: {
+    bestKey: 'flying-shmup.best',
+    statsKey: 'flying-shmup.stats.v1',
+    muteKey: 'flying-shmup.mute',
+    maxRuns: 50,
+  },
+};
+
+export const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+export const lerp = (a, b, t) => a + (b - a) * t;

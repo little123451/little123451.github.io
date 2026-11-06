@@ -1,0 +1,420 @@
+[
+  {
+    "id": 6,
+    "name": "charizard",
+    "nameZh": "喷火龙",
+    "types": [
+      "fire",
+      "flying"
+    ],
+    "stats": {
+      "hp": 78,
+      "attack": 84,
+      "defense": 78,
+      "spAttack": 109,
+      "spDefense": 85,
+      "speed": 100
+    },
+    "height": 17,
+    "weight": 905,
+    "tier": "elite",
+    "sprite": "assets/sprites/6.png",
+    "cry": "assets/cries/6.ogg"
+  },
+  {
+    "id": 12,
+    "name": "butterfree",
+    "nameZh": "巴大蝶",
+    "types": [
+      "bug",
+      "flying"
+    ],
+    "stats": {
+      "hp": 60,
+      "attack": 45,
+      "defense": 50,
+      "spAttack": 90,
+      "spDefense": 80,
+      "speed": 70
+    },
+    "height": 11,
+    "weight": 320,
+    "tier": "elite",
+    "sprite": "assets/sprites/12.png",
+    "cry": "assets/cries/12.ogg"
+  },
+  {
+    "id": 16,
+    "name": "pidgey",
+    "nameZh": "波波",
+    "types": [
+      "normal",
+      "flying"
+    ],
+    "stats": {
+      "hp": 40,
+      "attack": 45,
+      "defense": 40,
+      "spAttack": 35,
+      "spDefense": 35,
+      "speed": 56
+    },
+    "height": 3,
+    "weight": 18,
+    "tier": "common",
+    "sprite": "assets/sprites/16.png",
+    "cry": "assets/cries/16.ogg"
+  },
+  {
+    "id": 17,
+    "name": "pidgeotto",
+    "nameZh": "比比鸟",
+    "types": [
+      "normal",
+      "flying"
+    ],
+    "stats": {
+      "hp": 63,
+      "attack": 60,
+      "defense": 55,
+      "spAttack": 50,
+      "spDefense": 50,
+      "speed": 71
+    },
+    "height": 11,
+    "weight": 300,
+    "tier": "elite",
+    "sprite": "assets/sprites/17.png",
+    "cry": "assets/cries/17.ogg"
+  },
+  {
+    "id": 18,
+    "name": "pidgeot",
+    "nameZh": "大比鸟",
+    "types": [
+      "normal",
+      "flying"
+    ],
+    "stats": {
+      "hp": 83,
+      "attack": 80,
+      "defense": 75,
+      "spAttack": 70,
+      "spDefense": 70,
+      "speed": 101
+    },
+    "height": 15,
+    "weight": 395,
+    "tier": "elite",
+    "sprite": "assets/sprites/18.png",
+    "cry": "assets/cries/18.ogg"
+  },
+  {
+    "id": 21,
+    "name": "spearow",
+    "nameZh": "烈雀",
+    "types": [
+      "normal",
+      "flying"
+    ],
+    "stats": {
+      "hp": 40,
+      "attack": 60,
+      "defense": 30,
+      "spAttack": 31,
+      "spDefense": 31,
+      "speed": 70
+    },
+    "height": 3,
+    "weight": 20,
+    "tier": "common",
+    "sprite": "assets/sprites/21.png",
+    "cry": "assets/cries/21.ogg"
+  },
+  {
+    "id": 22,
+    "name": "fearow",
+    "nameZh": "大嘴雀",
+    "types": [
+      "normal",
+      "flying"
+    ],
+    "stats": {
+      "hp": 65,
+      "attack": 90,
+      "defense": 65,
+      "spAttack": 61,
+      "spDefense": 61,
+      "speed": 100
+    },
+    "height": 12,
+    "weight": 380,
+    "tier": "elite",
+    "sprite": "assets/sprites/22.png",
+    "cry": "assets/cries/22.ogg"
+  },
+  {
+    "id": 41,
+    "name": "zubat",
+    "nameZh": "超音蝠",
+    "types": [
+      "poison",
+      "flying"
+    ],
+    "stats": {
+      "hp": 40,
+      "attack": 45,
+      "defense": 35,
+      "spAttack": 30,
+      "spDefense": 40,
+      "speed": 55
+    },
+    "height": 8,
+    "weight": 75,
+    "tier": "common",
+    "sprite": "assets/sprites/41.png",
+    "cry": "assets/cries/41.ogg"
+  },
+  {
+    "id": 42,
+    "name": "golbat",
+    "nameZh": "大嘴蝠",
+    "types": [
+      "poison",
+      "flying"
+    ],
+    "stats": {
+      "hp": 75,
+      "attack": 80,
+      "defense": 70,
+      "spAttack": 65,
+      "spDefense": 75,
+      "speed": 90
+    },
+    "height": 16,
+    "weight": 550,
+    "tier": "elite",
+    "sprite": "assets/sprites/42.png",
+    "cry": "assets/cries/42.ogg"
+  },
+  {
+    "id": 83,
+    "name": "farfetchd",
+    "nameZh": "大葱鸭",
+    "types": [
+      "normal",
+      "flying"
+    ],
+    "stats": {
+      "hp": 52,
+      "attack": 90,
+      "defense": 55,
+      "spAttack": 58,
+      "spDefense": 62,
+      "speed": 60
+    },
+    "height": 8,
+    "weight": 150,
+    "tier": "elite",
+    "sprite": "assets/sprites/83.png",
+    "cry": "assets/cries/83.ogg"
+  },
+  {
+    "id": 84,
+    "name": "doduo",
+    "nameZh": "嘟嘟",
+    "types": [
+      "normal",
+      "flying"
+    ],
+    "stats": {
+      "hp": 35,
+      "attack": 85,
+      "defense": 45,
+      "spAttack": 35,
+      "spDefense": 35,
+      "speed": 75
+    },
+    "height": 14,
+    "weight": 392,
+    "tier": "common",
+    "sprite": "assets/sprites/84.png",
+    "cry": "assets/cries/84.ogg"
+  },
+  {
+    "id": 85,
+    "name": "dodrio",
+    "nameZh": "嘟嘟利",
+    "types": [
+      "normal",
+      "flying"
+    ],
+    "stats": {
+      "hp": 60,
+      "attack": 110,
+      "defense": 70,
+      "spAttack": 60,
+      "spDefense": 60,
+      "speed": 110
+    },
+    "height": 18,
+    "weight": 852,
+    "tier": "elite",
+    "sprite": "assets/sprites/85.png",
+    "cry": "assets/cries/85.ogg"
+  },
+  {
+    "id": 123,
+    "name": "scyther",
+    "nameZh": "飞天螳螂",
+    "types": [
+      "bug",
+      "flying"
+    ],
+    "stats": {
+      "hp": 70,
+      "attack": 110,
+      "defense": 80,
+      "spAttack": 55,
+      "spDefense": 80,
+      "speed": 105
+    },
+    "height": 15,
+    "weight": 560,
+    "tier": "elite",
+    "sprite": "assets/sprites/123.png",
+    "cry": "assets/cries/123.ogg"
+  },
+  {
+    "id": 130,
+    "name": "gyarados",
+    "nameZh": "暴鲤龙",
+    "types": [
+      "water",
+      "flying"
+    ],
+    "stats": {
+      "hp": 95,
+      "attack": 125,
+      "defense": 79,
+      "spAttack": 60,
+      "spDefense": 100,
+      "speed": 81
+    },
+    "height": 65,
+    "weight": 2350,
+    "tier": "elite",
+    "sprite": "assets/sprites/130.png",
+    "cry": "assets/cries/130.ogg"
+  },
+  {
+    "id": 142,
+    "name": "aerodactyl",
+    "nameZh": "化石翼龙",
+    "types": [
+      "rock",
+      "flying"
+    ],
+    "stats": {
+      "hp": 80,
+      "attack": 105,
+      "defense": 65,
+      "spAttack": 60,
+      "spDefense": 75,
+      "speed": 130
+    },
+    "height": 18,
+    "weight": 590,
+    "tier": "elite",
+    "sprite": "assets/sprites/142.png",
+    "cry": "assets/cries/142.ogg"
+  },
+  {
+    "id": 144,
+    "name": "articuno",
+    "nameZh": "急冻鸟",
+    "types": [
+      "ice",
+      "flying"
+    ],
+    "stats": {
+      "hp": 90,
+      "attack": 85,
+      "defense": 100,
+      "spAttack": 95,
+      "spDefense": 125,
+      "speed": 85
+    },
+    "height": 17,
+    "weight": 554,
+    "tier": "boss",
+    "sprite": "assets/sprites/144.png",
+    "cry": "assets/cries/144.ogg"
+  },
+  {
+    "id": 145,
+    "name": "zapdos",
+    "nameZh": "闪电鸟",
+    "types": [
+      "electric",
+      "flying"
+    ],
+    "stats": {
+      "hp": 90,
+      "attack": 90,
+      "defense": 85,
+      "spAttack": 125,
+      "spDefense": 90,
+      "speed": 100
+    },
+    "height": 16,
+    "weight": 526,
+    "tier": "boss",
+    "sprite": "assets/sprites/145.png",
+    "cry": "assets/cries/145.ogg"
+  },
+  {
+    "id": 146,
+    "name": "moltres",
+    "nameZh": "火焰鸟",
+    "types": [
+      "fire",
+      "flying"
+    ],
+    "stats": {
+      "hp": 90,
+      "attack": 100,
+      "defense": 90,
+      "spAttack": 125,
+      "spDefense": 85,
+      "speed": 90
+    },
+    "height": 20,
+    "weight": 600,
+    "tier": "boss",
+    "sprite": "assets/sprites/146.png",
+    "cry": "assets/cries/146.ogg"
+  },
+  {
+    "id": 149,
+    "name": "dragonite",
+    "nameZh": "快龙",
+    "types": [
+      "dragon",
+      "flying"
+    ],
+    "stats": {
+      "hp": 91,
+      "attack": 134,
+      "defense": 95,
+      "spAttack": 100,
+      "spDefense": 100,
+      "speed": 80
+    },
+    "height": 22,
+    "weight": 2100,
+    "tier": "elite",
+    "sprite": "assets/sprites/149.png",
+    "cry": "assets/cries/149.ogg"
+  }
+]
