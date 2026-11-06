@@ -1,7 +1,8 @@
 import { CONFIG } from '../config.js';
+import { bulletColor } from './bulletArt.js';
 
 export function createBulletPool(size) {
-  return Array.from({ length: size }, () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, r: 0, damage: 0, pierce: 0, color: '#fff', life: 0 }));
+  return Array.from({ length: size }, () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, angle: 0, r: 0, damage: 0, pierce: 0, color: '#fff', life: 0 }));
 }
 
 function acquire(pool) {
@@ -11,7 +12,7 @@ function acquire(pool) {
   return null;
 }
 
-export function spawnPlayerBullet(pool, { x, y, angle, damage, pierce }) {
+export function spawnPlayerBullet(pool, { x, y, angle, damage, pierce, type = 'normal', damageClass = 'special' }) {
   const bullet = acquire(pool);
   if (!bullet) return null;
   const speed = CONFIG.bullets.playerSpeed;
@@ -20,15 +21,20 @@ export function spawnPlayerBullet(pool, { x, y, angle, damage, pierce }) {
   bullet.y = y;
   bullet.vx = Math.cos(angle) * speed;
   bullet.vy = Math.sin(angle) * speed;
+  bullet.angle = angle;
   bullet.r = CONFIG.bullets.playerRadius;
   bullet.damage = damage;
   bullet.pierce = pierce;
   bullet.kind = 'player';
+  bullet.type = type;
+  bullet.damageClass = damageClass;
+  bullet.phase = Math.random() * 8;
+  bullet.color = bulletColor(type);
   bullet.life = 0;
   return bullet;
 }
 
-export function spawnEnemyBullet(pool, { x, y, angle, speed, damage = 10, color = '#ffd0d0', radius = CONFIG.enemy.bullets.radius }) {
+export function spawnEnemyBullet(pool, { x, y, angle, speed, damage = 10, color = null, radius = CONFIG.enemy.bullets.radius, type = 'normal', damageClass = 'physical' }) {
   const bullet = acquire(pool);
   if (!bullet) return null;
   bullet.active = true;
@@ -36,10 +42,14 @@ export function spawnEnemyBullet(pool, { x, y, angle, speed, damage = 10, color 
   bullet.y = y;
   bullet.vx = Math.cos(angle) * speed;
   bullet.vy = Math.sin(angle) * speed;
+  bullet.angle = angle;
   bullet.r = radius;
   bullet.damage = damage;
   bullet.pierce = 0;
-  bullet.color = color;
+  bullet.type = type;
+  bullet.damageClass = damageClass;
+  bullet.color = color || bulletColor(type);
+  bullet.phase = Math.random() * 8;
   bullet.kind = 'enemy';
   bullet.life = 0;
   return bullet;

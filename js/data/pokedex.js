@@ -1,5 +1,5 @@
-import { CONFIG, clamp } from '../config.js';
-import { getEffectiveness } from './typeChart.js';
+import { CONFIG } from '../config.js';
+import { hpFor, intervalFor, moveFor } from './combatFormulas.js';
 
 let byId = new Map();
 let all = [];
@@ -23,22 +23,18 @@ export function speciesList() {
 export function deriveStats(entry) {
   const p = CONFIG.player;
   return {
-    maxHp: p.maxHpBase + entry.stats.hp * p.hpPerStat,
-    baseDamage: p.damageBase + entry.stats.attack * p.damagePerAttack,
-    fireRateMs: clamp(p.fireRateBase - entry.stats.speed * p.fireRatePerSpeed, p.fireRateMin, p.fireRateBase),
-    moveSpeed: p.moveSpeedBase + entry.stats.speed * p.moveSpeedPerSpeed,
+    maxHp: hpFor('player', entry),
+    fireRateMs: intervalFor('player', entry) * 1000,
+    moveSpeed: moveFor('player', entry),
     regenPerSec: p.regenBase + entry.stats.defense * p.regenPerDef + entry.stats.spDefense * p.regenPerSpDef,
+    attack: entry.stats.attack,
+    spAttack: entry.stats.spAttack,
+    defense: entry.stats.defense,
+    spDefense: entry.stats.spDefense,
     radius: p.radius,
   };
 }
 
 export function levelMultiplier(level) {
   return 1 + CONFIG.player.levelGrowth * (level - 1);
-}
-
-export function computeDamage(player, defenderTypes) {
-  const stats = player.stats;
-  const skill = player.skillData;
-  const typeMult = getEffectiveness(player.skillType, defenderTypes, CONFIG.flags.typeChart);
-  return stats.baseDamage * skill.damageMult * levelMultiplier(player.level) * typeMult;
 }

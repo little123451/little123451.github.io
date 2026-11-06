@@ -1,6 +1,8 @@
 import { CONFIG, clamp, lerp } from '../config.js';
 import { deriveStats } from '../data/pokedex.js';
 import { DEFAULT_SKILL, SKILLS, skillLevelData } from '../data/skills.js';
+import { firePattern } from './outputPatterns.js';
+import { intervalFactor } from '../data/moveFormulas.js';
 
 export function createPlayer(species) {
   const stats = deriveStats(species);
@@ -19,6 +21,9 @@ export function createPlayer(species) {
     skillId: DEFAULT_SKILL,
     skillLevel: 1,
     skillData: skillLevelData(DEFAULT_SKILL, 1),
+    overloadCount: 0,
+    statBoostCount: 0,
+    buffs: { damage: 1, fireRate: 1, skillDamage: 0, skillInterval: 1 },
     skillType: SKILLS[DEFAULT_SKILL].type,
     skillName: SKILLS[DEFAULT_SKILL].name,
     cooldown: 0,
@@ -47,7 +52,7 @@ export function updatePlayer(player, dt, input, now) {
     const dy = targetY - player.y;
     const distance = Math.hypot(dx, dy);
     if (distance > 1.5) {
-      const step = Math.min(distance, speed * 1.7 * dt);
+      const step = Math.min(distance, speed * dt);
       player.x += (dx / distance) * step;
       player.y += (dy / distance) * step;
     }
@@ -98,27 +103,11 @@ export function hurtPlayer(player, amount, now) {
 
 export function firePlayerBullets(player, spawn) {
   const skill = player.skillData;
-  const count = skill.shots;
-  const spread = (skill.spreadDeg * Math.PI) / 180;
-  const baseAngle = -Math.PI / 2;
-  for (let i = 0; i < count; i += 1) {
-    let angle = baseAngle;
-    let xOffset = 0;
-    if (count > 1) {
-      const t = (i - (count - 1) / 2) / ((count - 1) / 2 || 1);
-      if (spread > 0) {
-        angle = baseAngle + t * spread;
-        xOffset = t * 10;
-      } else {
-        xOffset = (i - (count - 1) / 2) * 16;
-      }
-    }
-    spawn({
-      x: player.x + xOffset,
-      y: player.y - 26,
-      angle,
-      pierce: skill.pierce,
-    });
-  }
-  player.cooldown = player.stats.fireRateMs * skill.fireRateMult;
+  firePattern(SKILLS[player.skillId]?.pattern || 'volley', player, spawn);
+  player.cooldown =
+    player.stats.fireRateMs *
+    intervalFactor(player.skillId) *
+    skill.fireRateMult *
+    player.buffs.fireRate *
+    player.buffs.skillInterval;
 }

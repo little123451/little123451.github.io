@@ -1,5 +1,5 @@
-import { CONFIG, clamp } from '../config.js';
-import { pick, rand } from '../core/utils.js';
+import { CONFIG } from '../config.js';
+import { rand } from '../core/utils.js';
 import { nextBossSpeciesId } from './boss.js';
 
 export function createWaves() {
@@ -40,19 +40,10 @@ export function updateWaves(state, dt, api) {
   state.elapsed += dt;
   state.spawnTimer -= dt;
 
-  const interval = Math.max(0.32, 0.95 - state.wave * 0.035);
-  if (state.spawnTimer <= 0 && api.alive < CONFIG.enemy.maxAlive) {
-    state.spawnTimer = interval * rand(0.8, 1.2);
-    const batch = clamp(1 + Math.floor(state.wave / 5), 1, 3);
-    for (let i = 0; i < batch; i += 1) {
-      const eliteWeight = clamp(10 + state.wave * 5, 10, 65);
-      const tier = Math.random() * 100 < eliteWeight ? 'elite' : 'common';
-      const behavior =
-        tier === 'elite'
-          ? pick(['hover', 'dive', 'sine'])
-          : pick(['straight', 'sine', 'dive']);
-      api.spawnEnemy({ tier, behavior, wave: state.wave });
-    }
+  const interval = Math.max(CONFIG.formations.intervalMin, CONFIG.formations.intervalBase - state.wave * CONFIG.formations.intervalPerWave);
+  if (state.spawnTimer <= 0) {
+    state.spawnTimer = interval * rand(0.85, 1.15);
+    api.spawnSquad(state.wave);
   }
 
   if (state.elapsed >= CONFIG.waves.durationMs / 1000) {

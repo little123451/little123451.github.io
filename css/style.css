@@ -123,10 +123,11 @@ p {
   background: var(--panel);
 }
 
-.mech-card img {
+.mech-card img,
+.mech-card canvas {
   width: 96px;
-  height: 96px;
-  image-rendering: auto;
+  height: 160px;
+  image-rendering: pixelated;
   filter: drop-shadow(0 8px 18px rgba(120, 200, 255, 0.25));
 }
 
@@ -249,9 +250,10 @@ footer a {
 }
 
 @media (max-height: 700px) {
-  .mech-card img {
+  .mech-card img,
+  .mech-card canvas {
     width: 76px;
-    height: 76px;
+    height: 127px;
   }
   .overlay {
     gap: 7px;

@@ -18,7 +18,6 @@
     "height": 17,
     "weight": 905,
     "tier": "elite",
-    "sprite": "assets/sprites/6.png",
     "cry": "assets/cries/6.ogg"
   },
   {
@@ -40,7 +39,6 @@
     "height": 11,
     "weight": 320,
     "tier": "elite",
-    "sprite": "assets/sprites/12.png",
     "cry": "assets/cries/12.ogg"
   },
   {
@@ -62,7 +60,6 @@
     "height": 3,
     "weight": 18,
     "tier": "common",
-    "sprite": "assets/sprites/16.png",
     "cry": "assets/cries/16.ogg"
   },
   {
@@ -84,7 +81,6 @@
     "height": 11,
     "weight": 300,
     "tier": "elite",
-    "sprite": "assets/sprites/17.png",
     "cry": "assets/cries/17.ogg"
   },
   {
@@ -106,7 +102,6 @@
     "height": 15,
     "weight": 395,
     "tier": "elite",
-    "sprite": "assets/sprites/18.png",
     "cry": "assets/cries/18.ogg"
   },
   {
@@ -128,7 +123,6 @@
     "height": 3,
     "weight": 20,
     "tier": "common",
-    "sprite": "assets/sprites/21.png",
     "cry": "assets/cries/21.ogg"
   },
   {
@@ -150,7 +144,6 @@
     "height": 12,
     "weight": 380,
     "tier": "elite",
-    "sprite": "assets/sprites/22.png",
     "cry": "assets/cries/22.ogg"
   },
   {
@@ -172,7 +165,6 @@
     "height": 8,
     "weight": 75,
     "tier": "common",
-    "sprite": "assets/sprites/41.png",
     "cry": "assets/cries/41.ogg"
   },
   {
@@ -194,7 +186,6 @@
     "height": 16,
     "weight": 550,
     "tier": "elite",
-    "sprite": "assets/sprites/42.png",
     "cry": "assets/cries/42.ogg"
   },
   {
@@ -216,7 +207,6 @@
     "height": 8,
     "weight": 150,
     "tier": "elite",
-    "sprite": "assets/sprites/83.png",
     "cry": "assets/cries/83.ogg"
   },
   {
@@ -238,7 +228,6 @@
     "height": 14,
     "weight": 392,
     "tier": "common",
-    "sprite": "assets/sprites/84.png",
     "cry": "assets/cries/84.ogg"
   },
   {
@@ -260,7 +249,6 @@
     "height": 18,
     "weight": 852,
     "tier": "elite",
-    "sprite": "assets/sprites/85.png",
     "cry": "assets/cries/85.ogg"
   },
   {
@@ -282,7 +270,6 @@
     "height": 15,
     "weight": 560,
     "tier": "elite",
-    "sprite": "assets/sprites/123.png",
     "cry": "assets/cries/123.ogg"
   },
   {
@@ -304,7 +291,6 @@
     "height": 65,
     "weight": 2350,
     "tier": "elite",
-    "sprite": "assets/sprites/130.png",
     "cry": "assets/cries/130.ogg"
   },
   {
@@ -326,7 +312,6 @@
     "height": 18,
     "weight": 590,
     "tier": "elite",
-    "sprite": "assets/sprites/142.png",
     "cry": "assets/cries/142.ogg"
   },
   {
@@ -348,7 +333,6 @@
     "height": 17,
     "weight": 554,
     "tier": "boss",
-    "sprite": "assets/sprites/144.png",
     "cry": "assets/cries/144.ogg"
   },
   {
@@ -370,7 +354,6 @@
     "height": 16,
     "weight": 526,
     "tier": "boss",
-    "sprite": "assets/sprites/145.png",
     "cry": "assets/cries/145.ogg"
   },
   {
@@ -392,7 +375,6 @@
     "height": 20,
     "weight": 600,
     "tier": "boss",
-    "sprite": "assets/sprites/146.png",
     "cry": "assets/cries/146.ogg"
   },
   {
@@ -414,7 +396,6 @@
     "height": 22,
     "weight": 2100,
     "tier": "elite",
-    "sprite": "assets/sprites/149.png",
     "cry": "assets/cries/149.ogg"
   }
 ]

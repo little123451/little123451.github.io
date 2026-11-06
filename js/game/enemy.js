@@ -1,35 +1,64 @@
 import { CONFIG, clamp } from '../config.js';
 import { rand } from '../core/utils.js';
+import {
+  attackFor,
+  bulletSpeedFactor,
+  damageClassForSpecies,
+  hpFor,
+  intervalFor,
+  rewardFactor,
+} from '../data/combatFormulas.js';
+import { pathSpeed, samplePath } from './paths.js';
 
-export const TIER_HP = { common: 16, elite: 54 };
 export const TIER_SIZE = { common: 56, elite: 78 };
 
-export function createEnemy(species, wave, behavior) {
+export function createEnemy(species, wave, options = {}) {
   const tier = species.tier === 'elite' ? 'elite' : 'common';
-  const difficulty = 1 + wave * CONFIG.waves.difficultyPerWave;
-  const x = rand(56, CONFIG.view.width - 56);
-  const hp = TIER_HP[tier] * difficulty;
   const isElite = tier === 'elite';
+  const tuning = CONFIG.enemyTuning;
+  const damageClass = damageClassForSpecies(species);
+  const hpGrowth = 1 + CONFIG.combat.growth.enemyWave * wave;
+  const hp = hpFor(tier, species, hpGrowth);
+  const reward = rewardFactor(species);
+  const jitter = 1 + (Math.random() * 2 - 1) * CONFIG.combat.jitter.enemyInterval;
+  const shotMs = intervalFor(tier, species) * jitter;
+  const path = options.path;
+  const start = path ? samplePath(path, 0) : { x: CONFIG.view.width / 2, y: -60, angle: Math.PI / 2 };
+
   return {
     species,
     tier,
-    behavior,
-    x,
-    y: -TIER_SIZE[tier] / 2 - 20,
-    baseX: x,
+    damageClass,
+    path,
+    pathDist: 0,
+    speed: pathSpeed(species),
+    moveAngle: start.angle,
+    mode: 'path',
+    hold: Boolean(options.hold),
+    holdTimer: 0,
+    holdDir: 1,
+    holdMinX: start.x,
+    holdMaxX: start.x,
+    delay: options.delay || 0,
+    x: start.x,
+    y: start.y,
+    baseX: start.x,
     hp,
     maxHp: hp,
     size: TIER_SIZE[tier],
     radius: TIER_SIZE[tier] * 0.32,
-    vy: clamp((isElite ? 68 : 92) + wave * 2.2, 68, 210),
     t: 0,
-    shotTimer: isElite ? rand(0.6, 1.4) : Infinity,
-    shotMs: isElite ? rand(1.5, 2.2) : 0,
+    tilt: 0,
+    shotTimer: isElite ? rand(0.6, 1.4) : rand(0.4, 0.9),
+    shotMs,
+    shots: isElite ? 3 : 1,
+    bulletMul: bulletSpeedFactor(species),
     dead: false,
     hitAt: 0,
-    scoreValue: isElite ? CONFIG.score.elite : CONFIG.score.common,
-    expValue: CONFIG.exp.yields[tier],
-    damage: isElite ? 10 : 8,
+    scoreValue: Math.round((isElite ? CONFIG.score.elite : CONFIG.score.common) * reward),
+    expValue: Math.round(CONFIG.exp.yields[tier] * reward),
+    damage: attackFor(tier, species, damageClass),
+    contactDamage: tuning.contactBase[tier],
   };
 }
 
@@ -39,50 +68,81 @@ export function enemyBulletSpeed(wave) {
 }
 
 function aimAt(enemy, ctx, spread = 0) {
-  const angle = Math.atan2(ctx.playerY - enemy.y, ctx.playerX - enemy.x) + spread;
-  return angle;
+  return Math.atan2(ctx.playerY - enemy.y, ctx.playerX - enemy.x) + spread;
+}
+
+function updateMovement(enemy, dt) {
+  if (enemy.mode === 'path' && enemy.path) {
+    enemy.pathDist += enemy.speed * dt;
+    const point = samplePath(enemy.path, enemy.pathDist);
+    enemy.x = point.x;
+    enemy.y = point.y;
+    enemy.moveAngle = point.angle;
+    if (enemy.pathDist >= enemy.path.total) {
+      if (enemy.hold) {
+        enemy.mode = 'hold';
+        enemy.holdTimer = rand(CONFIG.paths.holdMin, CONFIG.paths.holdMax);
+        enemy.baseX = clamp(enemy.x, 60, CONFIG.view.width - 60);
+        enemy.holdDir = Math.random() < 0.5 ? -1 : 1;
+        const holdRange = Math.max(CONFIG.paths.holdRangeMin, enemy.speed * CONFIG.paths.holdRangeFactor);
+        enemy.holdMinX = Math.max(40, enemy.baseX - holdRange);
+        enemy.holdMaxX = Math.min(CONFIG.view.width - 40, enemy.baseX + holdRange);
+      } else {
+        enemy.mode = 'fall';
+      }
+    }
+  } else if (enemy.mode === 'hold') {
+    enemy.holdTimer -= dt;
+    enemy.x += enemy.holdDir * enemy.speed * dt;
+    if (enemy.x <= enemy.holdMinX) {
+      enemy.x = enemy.holdMinX;
+      enemy.holdDir = 1;
+    } else if (enemy.x >= enemy.holdMaxX) {
+      enemy.x = enemy.holdMaxX;
+      enemy.holdDir = -1;
+    }
+    if (enemy.holdTimer <= 0) enemy.mode = 'fall';
+  } else if (enemy.mode === 'fall') {
+    enemy.y += enemy.speed * dt;
+  }
+  const targetTilt = clamp((enemy.moveAngle - Math.PI / 2) * 0.32, -0.3, 0.3);
+  enemy.tilt = targetTilt;
 }
 
 export function updateEnemy(enemy, dt, ctx) {
   enemy.t += dt;
-  if (enemy.behavior === 'sine') {
-    enemy.x = enemy.baseX + Math.sin(enemy.t * 1.8) * 52;
-    enemy.y += enemy.vy * dt;
-  } else if (enemy.behavior === 'dive') {
-    const steer = clamp((ctx.playerX - enemy.x) * 0.9, -140, 140);
-    enemy.x += steer * dt;
-    enemy.y += enemy.vy * 1.25 * dt;
-  } else if (enemy.behavior === 'hover') {
-    const targetY = 180 + (enemy.tier === 'elite' ? 24 : 0);
-    if (enemy.y < targetY) {
-      enemy.y += enemy.vy * dt;
-    } else {
-      enemy.x = clamp(enemy.baseX + Math.sin(enemy.t * 1.2) * 66, 40, CONFIG.view.width - 40);
-    }
-  } else {
-    enemy.y += enemy.vy * dt;
+
+  if (enemy.delay > 0) {
+    enemy.delay -= dt;
+    return true;
   }
 
-  if (enemy.shotMs && ctx.canShoot && enemy.y > 20) {
+  updateMovement(enemy, dt);
+
+  const onScreen = enemy.x > -30 && enemy.x < CONFIG.view.width + 30;
+  if (enemy.shotMs && ctx.canShoot && enemy.mode !== 'fall' && enemy.y > 20 && onScreen) {
     enemy.shotTimer -= dt;
     if (enemy.shotTimer <= 0) {
       enemy.shotTimer = enemy.shotMs * rand(0.85, 1.2);
-      const speed = enemyBulletSpeed(ctx.wave);
-      const shots = enemy.tier === 'elite' ? 3 : 1;
+      const speed = Math.min(CONFIG.enemy.bullets.speedCap, enemyBulletSpeed(ctx.wave) * enemy.bulletMul);
+      const shots = enemy.shots;
       for (let i = 0; i < shots; i += 1) {
         const spread = shots === 1 ? 0 : (i - (shots - 1) / 2) * 0.16;
+        enemy.firedAt = ctx.clock;
         ctx.fire({
+          type: enemy.species.types[0],
+          damageClass: enemy.damageClass,
           x: enemy.x,
           y: enemy.y + 16,
           angle: aimAt(enemy, ctx, spread),
           speed,
           damage: enemy.damage,
-          color: '#ffb3c8',
         });
       }
     }
   }
 
   if (enemy.y > CONFIG.enemy.despawnY) return false;
+  if (enemy.x < -140 || enemy.x > CONFIG.view.width + 140) return false;
   return true;
 }

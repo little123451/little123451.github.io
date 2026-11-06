@@ -3,22 +3,33 @@ import { rand, TAU } from '../core/utils.js';
 import { circleHit } from '../core/utils.js';
 import { getSpecies } from '../data/pokedex.js';
 import { getEffectiveness } from '../data/typeChart.js';
-import { ITEMS, rollDrop } from '../data/items.js';
+import { ITEMS } from '../data/items.js';
+import { damageFactor } from '../data/moveFormulas.js';
+import { attackFor, damageClassForMove, mitigation } from '../data/combatFormulas.js';
+import { getMoveForSkill } from '../data/skills.js';
 import { addExp, createPlayer, firePlayerBullets, hurtPlayer, updatePlayer } from './player.js';
 import { createBulletPool, spawnEnemyBullet, spawnPlayerBullet, updateBulletPool } from './bullet.js';
 import { createEnemy, updateEnemy } from './enemy.js';
 import { createBoss, updateBoss } from './boss.js';
 import { createWaves, notifyBossDefeated, updateWaves } from './waves.js';
-import { createDrop, updateDrop } from './drops.js';
+import { createSquad } from './formations.js';
+import { buildPath } from './paths.js';
+import { Scene } from './scene.js';
+import { BOSS_SCENES, SCENE_ORDER } from '../data/scenes.js';
+import { collideDrops, createDrop, maxDropsReached, updateDrop } from './drops.js';
 import { burst, createParticleList, updateParticles } from './particles.js';
+import { Animator, drawAnimator, spriteHeight, spriteWidth } from './animator.js';
+import { bulletColor, drawBullet } from './bulletArt.js';
 import { Telemetry } from '../core/telemetry-api.js';
 
 const PLAYER_HIT_FLASH = 0.25;
+const ROLE_TARGET_HEIGHT = { player: 80, common: 84, elite: 112, boss: 170 };
 
 export class Game {
-  constructor({ ctx, pokedex, images, input, audio, mechId, onGameOver, onHud }) {
+  constructor({ ctx, pokedex, pmd, images, input, audio, mechId, onGameOver, onHud }) {
     this.ctx = ctx;
     this.pokedex = pokedex;
+    this.pmd = pmd;
     this.images = images;
     this.input = input;
     this.audio = audio;
@@ -44,21 +55,7 @@ export class Game {
     this.waveBannerText = '';
     this.bossBanner = 0;
     this.deathTimer = 0;
-    this.clouds = Array.from({ length: 7 }, () => ({
-      x: rand(0, CONFIG.view.width),
-      y: rand(0, CONFIG.view.height),
-      w: rand(70, 170),
-      h: rand(18, 40),
-      speed: rand(8, 26),
-      alpha: rand(0.05, 0.16),
-    }));
-    this.stars = Array.from({ length: 70 }, () => ({
-      x: rand(0, CONFIG.view.width),
-      y: rand(0, CONFIG.view.height),
-      r: rand(0.6, 1.8),
-      speed: rand(14, 46),
-      alpha: rand(0.2, 0.8),
-    }));
+    this.scene = new Scene(CONFIG.view);
     try {
       this.best = Number(localStorage.getItem(CONFIG.storage.bestKey)) || 0;
     } catch {
@@ -69,9 +66,13 @@ export class Game {
 
   reset(begin = true) {
     this.player = createPlayer(getSpecies(this.mechId));
+    this.attachSprite(this.player, this.mechId, 'player');
+    this.lastShotAt = -10;
+    this.playerMoving = false;
     this.playerBullets.forEach((b) => (b.active = false));
     this.enemyBullets.forEach((b) => (b.active = false));
     this.enemies.length = 0;
+    this.pendingSpawns = [];
     this.drops.length = 0;
     this.particles.items.length = 0;
     this.boss = null;
@@ -97,6 +98,32 @@ export class Game {
     this.enemySpeciesPool = this.pokedex.filter((s) => s.id !== this.mechId && s.tier !== 'boss');
   }
 
+  attachSprite(entity, speciesId, role) {
+    const meta = this.pmd[speciesId];
+    if (!meta) return;
+    const height = spriteHeight(meta);
+    const target = ROLE_TARGET_HEIGHT[role] || ROLE_TARGET_HEIGHT.common;
+    const override = CONFIG.sprite?.scaleOverrides?.[speciesId];
+    const scale = override || clamp(Math.round(target / Math.max(height, 1)), 1, 4);
+    const idle = meta.anims.idle;
+    const width = spriteWidth(meta);
+    entity.meta = meta;
+    entity.scale = scale;
+    entity.row = role === 'player' ? 4 : 0;
+    entity.anim = new Animator(meta);
+    entity.anim.set(role === 'player' ? 'idle' : 'move');
+    entity.drawW = width * scale;
+    entity.drawH = height * scale;
+    entity.radius = Math.min(idle.fw, idle.fh) * scale * 0.32;
+    entity.firedAt = -10;
+  }
+
+  updateAnimator(entity, dtMs, state) {
+    if (!entity.anim) return;
+    entity.anim.set(state);
+    entity.anim.update(dtMs);
+  }
+
   get aliveCount() {
     return this.enemies.length + (this.boss && !this.boss.dead ? 1 : 0);
   }
@@ -117,21 +144,38 @@ export class Game {
     const moved = updatePlayer(this.player, dt, this.input, this.clock * 1000);
     Telemetry.distance(this.run, moved.dx, moved.dy);
     Telemetry.sample(this.run, { wave: this.waves.wave, level: this.player.level, score: this.score });
+    this.playerMoving = Math.hypot(moved.dx, moved.dy) > dt * 12;
 
     this.player.cooldown -= dt * 1000;
     if (this.player.cooldown <= 0) {
       firePlayerBullets(this.player, (spec) =>
         spawnPlayerBullet(this.playerBullets, {
           ...spec,
-          damage: this.player.stats.baseDamage * this.player.skillData.damageMult * (1 + CONFIG.player.levelGrowth * (this.player.level - 1)),
+          type: this.player.skillType,
+          damageClass: damageClassForMove(getMoveForSkill(this.player.skillId)),
+          damage:
+            attackFor(
+              'player',
+              this.player.species,
+              damageClassForMove(getMoveForSkill(this.player.skillId)),
+              damageFactor(this.player.skillId),
+              this.player.skillData.damageMult,
+              1 + CONFIG.player.levelGrowth * (this.player.level - 1),
+            ) *
+            (1 + this.player.buffs.skillDamage) *
+            this.player.buffs.damage,
         }),
       );
       this.audio.shoot();
+      this.lastShotAt = this.clock;
     }
+    const playerHurt = this.clock - (this.player.hitAt || -10) < 0.2;
+    this.updateAnimator(this.player, dt * 1000, playerHurt ? 'hurt' : 'move');
 
     updateBulletPool(this.playerBullets, dt);
     updateBulletPool(this.enemyBullets, dt);
 
+    this.processSpawns();
     this.updateEnemies(dt);
     this.updateBoss(dt);
     this.updateDrops(dt);
@@ -139,7 +183,7 @@ export class Game {
 
     updateWaves(this.waves, dt, {
       alive: this.aliveCount,
-      spawnEnemy: ({ tier, behavior, wave }) => this.spawnEnemy(tier, behavior, wave),
+      spawnSquad: (wave) => this.spawnSquad(wave),
       spawnBoss: (id) => this.spawnBoss(id),
       onBossWarning: (wave) => {
         const id = this.bossIdForWave(wave);
@@ -180,21 +224,17 @@ export class Game {
     if (this.waveBanner > 0) this.waveBanner -= dt;
     updateParticles(this.particles, dt);
     if (scroll) {
-      for (const cloud of this.clouds) {
-        cloud.y += cloud.speed * dt;
-        if (cloud.y - cloud.h > CONFIG.view.height) {
-          cloud.y = -cloud.h;
-          cloud.x = rand(0, CONFIG.view.width);
-        }
-      }
-      for (const star of this.stars) {
-        star.y += star.speed * dt;
-        if (star.y > CONFIG.view.height) {
-          star.y = 0;
-          star.x = rand(0, CONFIG.view.width);
-        }
-      }
+      this.scene.update(dt, this.currentSceneTheme());
     }
+  }
+
+  currentSceneTheme() {
+    if (this.boss && !this.boss.dead) {
+      const bossTheme = BOSS_SCENES[this.boss.species.id];
+      if (bossTheme) return bossTheme;
+    }
+    const index = Math.floor((Math.max(1, this.waves.wave) - 1) / CONFIG.scene.switchEveryWaves) % SCENE_ORDER.length;
+    return SCENE_ORDER[index];
   }
 
   updateEnemies(dt) {
@@ -203,6 +243,7 @@ export class Game {
       playerX: this.player.x,
       playerY: this.player.y,
       wave: this.waves.wave,
+      clock: this.clock,
       canShoot,
       fire: (spec) => spawnEnemyBullet(this.enemyBullets, spec),
     };
@@ -213,6 +254,15 @@ export class Game {
         continue;
       }
       if (!updateEnemy(enemy, dt, ctx)) this.enemies.splice(i, 1);
+      const state =
+        this.clock - (enemy.hitAt || -10) < 0.2
+          ? 'hurt'
+          : this.clock - (enemy.firedAt || -10) < 0.32
+            ? 'attack'
+            : enemy.mode === 'hold'
+              ? 'idle'
+              : 'move';
+      this.updateAnimator(enemy, dt * 1000, state);
       if (!enemy.entered && enemy.y > -20) {
         enemy.entered = true;
         if (enemy.tier === 'elite') this.audio.cry(enemy.species.id);
@@ -227,9 +277,12 @@ export class Game {
       playerX: this.player.x,
       playerY: this.player.y,
       wave: this.waves.wave,
-      fire: (spec) => spawnEnemyBullet(this.enemyBullets, spec),
+      clock: this.clock,
+      fire: (spec) => spawnEnemyBullet(this.enemyBullets, { type: this.boss.species.types[0], color: bulletColor(this.boss.species.types[0]), ...spec }),
       canShoot,
     });
+    const bossState = this.clock - (this.boss.hitAt || -10) < 0.2 ? 'hurt' : this.clock - (this.boss.firedAt || -10) < 0.5 ? 'attack' : 'idle';
+    this.updateAnimator(this.boss, dt * 1000, bossState);
     if (this.boss.dead) {
       if (this.boss.dying > 0 && Math.random() < dt * 22) {
         burst(this.particles, this.boss.x + rand(-60, 60), this.boss.y + rand(-40, 40), 10, '#ffb457', { speed: 260, size: 8 });
@@ -241,6 +294,7 @@ export class Game {
   }
 
   updateDrops(dt) {
+    collideDrops(this.drops);
     for (let i = this.drops.length - 1; i >= 0; i -= 1) {
       const result = updateDrop(this.drops[i], dt, this.player);
       if (result === 'collect') {
@@ -260,12 +314,13 @@ export class Game {
         if (enemy.dead) continue;
         if (!circleHit(bullet.x, bullet.y, bullet.r, enemy.x, enemy.y, enemy.radius)) continue;
         const typeMult = getEffectiveness('flying', enemy.species.types, CONFIG.flags.typeChart);
-        const damage = bullet.damage * typeMult;
+        const defStat = bullet.damageClass === 'physical' ? enemy.species.stats.defense : enemy.species.stats.spDefense;
+        const damage = bullet.damage * mitigation(defStat) * typeMult;
         enemy.hp -= damage;
         enemy.hitAt = this.clock;
         Telemetry.damage(this.run, damage);
         this.audio.hit();
-        burst(this.particles, bullet.x, bullet.y, 3, '#fff2a8', { speed: 90, size: 2.4, life: 0.28 });
+        burst(this.particles, bullet.x, bullet.y, 3, bullet.color || '#fff2a8', { speed: 90, size: 2.4, life: 0.28 });
         if (enemy.hp <= 0) this.killEnemy(enemy);
         if (bullet.pierce > 0) {
           bullet.pierce -= 1;
@@ -277,12 +332,13 @@ export class Game {
       if (!bullet.active) continue;
       if (this.boss && !this.boss.dead && this.boss.y > 0 && circleHit(bullet.x, bullet.y, bullet.r, this.boss.x, this.boss.y, this.boss.radius)) {
         const typeMult = getEffectiveness('flying', this.boss.species.types, CONFIG.flags.typeChart);
-        const damage = bullet.damage * typeMult;
+        const defStat = bullet.damageClass === 'physical' ? this.boss.species.stats.defense : this.boss.species.stats.spDefense;
+        const damage = bullet.damage * mitigation(defStat) * typeMult;
         this.boss.hp -= damage;
         this.boss.hitAt = this.clock;
         Telemetry.damage(this.run, damage);
         this.audio.hit();
-        burst(this.particles, bullet.x, bullet.y, 3, '#fff2a8', { speed: 110, size: 2.6, life: 0.3 });
+        burst(this.particles, bullet.x, bullet.y, 3, bullet.color || '#fff2a8', { speed: 110, size: 2.6, life: 0.3 });
         if (bullet.pierce > 0) bullet.pierce -= 1;
         else bullet.active = false;
         if (this.boss.hp <= 0 && !this.boss.dead) {
@@ -298,14 +354,15 @@ export class Game {
       if (!bullet.active) continue;
       if (!circleHit(bullet.x, bullet.y, bullet.r, player.x, player.y, player.radius * 0.7)) continue;
       bullet.active = false;
-      this.damagePlayer(bullet.damage);
+      const defStat = bullet.damageClass === 'physical' ? player.stats.defense : player.stats.spDefense;
+      this.damagePlayer(bullet.damage * mitigation(defStat));
     }
 
     for (const enemy of this.enemies) {
       if (enemy.dead) continue;
       if (!circleHit(enemy.x, enemy.y, enemy.radius * 0.8, player.x, player.y, player.radius * 0.7)) continue;
       enemy.hp -= 14;
-      this.damagePlayer(enemy.damage);
+      this.damagePlayer(enemy.contactDamage ?? enemy.damage);
       enemy.hitAt = this.clock;
       if (enemy.hp <= 0) this.killEnemy(enemy);
     }
@@ -321,6 +378,7 @@ export class Game {
     if (!hurtPlayer(this.player, amount, this.clock * 1000)) return;
     Telemetry.taken(this.run, amount);
     this.hurtFlash = PLAYER_HIT_FLASH;
+    this.player.hitAt = this.clock;
     this.shake = Math.max(this.shake, 0.45);
     this.combo = 0;
     this.comboTimer = 0;
@@ -344,8 +402,9 @@ export class Game {
     this.audio.cry(enemy.species.id);
     this.shake = Math.max(this.shake, 0.18);
 
-    const itemId = rollDrop(enemy.species.id, false);
-    if (itemId) this.drops.push(createDrop(itemId, enemy.x, enemy.y));
+    const dropChance = enemy.tier === 'elite' ? CONFIG.drops.eliteChance : CONFIG.drops.commonChance;
+    const itemId = Math.random() < dropChance ? (enemy.tier === 'elite' ? 'skill_up' : 'heal') : null;
+    if (itemId && !maxDropsReached(this.drops.length)) this.drops.push(createDrop(itemId, enemy.x, enemy.y));
   }
 
   killBoss() {
@@ -355,7 +414,14 @@ export class Game {
     burst(this.particles, boss.x, boss.y, 60, '#ffd27a', { speed: 380, size: 7, life: 1 });
     this.audio.explode();
     this.audio.cry(boss.species.id);
-    this.drops.push(createDrop('skill_up', boss.x, boss.y));
+    const bossLevelUps = addExp(this.player, boss.expValue || 0);
+    if (bossLevelUps > 0) {
+      this.audio.levelUp();
+      burst(this.particles, this.player.x, this.player.y, 18, '#9be7ff', { speed: 180, size: 4.5, life: 0.7 });
+    }
+    if (!maxDropsReached(this.drops.length)) this.drops.push(createDrop('skill_up', boss.x, boss.y));
+    const utilityDrop = this.player.hp / this.player.maxHp < CONFIG.drops.bossHealThreshold ? 'heal' : 'stat_boost';
+    if (!maxDropsReached(this.drops.length)) this.drops.push(createDrop(utilityDrop, boss.x + 18, boss.y - 8));
     notifyBossDefeated(this.waves);
     this.boss = null;
     this.waveBanner = 1.8;
@@ -366,27 +432,56 @@ export class Game {
 
   collectDrop(drop) {
     const item = ITEMS[drop.itemId];
-    const upgraded = item.apply(this.player);
+    const gained = item.apply(this.player);
     Telemetry.pickup(this.run, drop.itemId);
-    this.score += upgraded ? 0 : CONFIG.drops.scoreValue;
+    const wastedScore = item.scoreValue ?? CONFIG.drops.scoreValue;
+    this.score += gained ? 0 : wastedScore;
     this.audio.pickup();
-    burst(this.particles, drop.x, drop.y, 12, upgraded ? '#9be7ff' : '#ffe066', { speed: 170, size: 4, life: 0.5 });
-    if (!upgraded) {
+    burst(this.particles, drop.x, drop.y, 12, gained ? '#9be7ff' : '#ffe066', { speed: 170, size: 4, life: 0.5 });
+    if (!gained) {
       this.waveBanner = 0.8;
-      this.waveBannerText = '技能已满级 +500 分';
+      this.waveBannerText = `${item.name}已满 +${wastedScore} 分`;
     }
   }
 
-  spawnEnemy(tier, behavior, wave) {
-    const pool = this.enemySpeciesPool.filter((s) => (tier === 'elite' ? s.tier === 'elite' : s.tier === 'common'));
+  spawnSquad(wave) {
+    if (this.pendingSpawns.length > 40) return;
+    const squad = createSquad(wave);
+    for (const member of squad.members) {
+      this.pendingSpawns.push({ at: this.clock + member.delay, member, wave });
+    }
+  }
+
+  processSpawns() {
+    if (!this.pendingSpawns.length) return;
+    for (let i = this.pendingSpawns.length - 1; i >= 0; i -= 1) {
+      const pending = this.pendingSpawns[i];
+      if (this.clock < pending.at) continue;
+      if (this.enemies.length >= CONFIG.enemy.maxAlive) continue;
+      this.spawnMember(pending.member, pending.wave);
+      this.pendingSpawns.splice(i, 1);
+    }
+  }
+
+  spawnMember(member, wave) {
+    const pool = this.enemySpeciesPool.filter((s) => (member.tier === 'elite' ? s.tier === 'elite' : s.tier === 'common'));
     const species = pool.length ? pool[Math.floor(Math.random() * pool.length)] : this.enemySpeciesPool[0];
-    const enemy = createEnemy(species, wave, behavior);
+    const path = buildPath(member.pathKey, {
+      dx: member.dx,
+      playerX: this.player.x,
+      playerY: this.player.y,
+      hold: member.hold,
+    });
+    const enemy = createEnemy(species, wave, { path, hold: member.hold, delay: 0 });
+    this.attachSprite(enemy, species.id, species.tier === 'elite' ? 'elite' : 'common');
     this.enemies.push(enemy);
   }
 
   spawnBoss(id) {
+    this.pendingSpawns.length = 0;
     const species = getSpecies(id);
     this.boss = createBoss(species, this.waves.wave);
+    this.attachSprite(this.boss, id, 'boss');
     this.audio.cry(id);
     this.shake = 0.6;
     this.waveBanner = 1.4;
@@ -452,7 +547,7 @@ export class Game {
     ctx.save();
     ctx.translate(shakeX, shakeY);
 
-    this.drawBackground(ctx);
+    this.scene.draw(ctx);
     this.drawDrops(ctx);
     this.drawEnemies(ctx);
     this.drawBoss(ctx);
@@ -473,176 +568,100 @@ export class Game {
     }
   }
 
-  drawBackground(ctx) {
-    const { width, height } = CONFIG.view;
-    const grad = ctx.createLinearGradient(0, 0, 0, height);
-    const bossHue = this.boss ? this.boss.species.id : 0;
-    if (bossHue === 146) {
-      grad.addColorStop(0, '#2a0d0d');
-      grad.addColorStop(1, '#120608');
-    } else if (bossHue === 145) {
-      grad.addColorStop(0, '#1c1a05');
-      grad.addColorStop(1, '#0a0a10');
-    } else if (bossHue === 144) {
-      grad.addColorStop(0, '#061a24');
-      grad.addColorStop(1, '#060912');
-    } else {
-      grad.addColorStop(0, '#0b1430');
-      grad.addColorStop(1, '#05070f');
-    }
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, width, height);
-
-    for (const star of this.stars) {
-      ctx.globalAlpha = star.alpha;
-      ctx.fillStyle = '#cfe6ff';
-      ctx.fillRect(star.x, star.y, star.r, star.r * 2.4);
-    }
-    ctx.globalAlpha = 1;
-
-    for (const cloud of this.clouds) {
-      ctx.globalAlpha = cloud.alpha;
-      ctx.fillStyle = '#7fa6d8';
-      ctx.beginPath();
-      ctx.ellipse(cloud.x, cloud.y, cloud.w / 2, cloud.h / 2, 0, 0, TAU);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-  }
-
   drawPlayer(ctx) {
     const p = this.player;
-    if (p.dead) return;
+    if (p.dead || !p.anim) return;
     const blink = p.invulnUntil > this.clock * 1000 && Math.floor(this.clock * 20) % 2 === 0;
-    const img = this.images.get(p.species.id);
     const y = p.y + Math.sin(this.clock * 2.4) * 3;
-    ctx.save();
-    ctx.globalAlpha = blink ? 0.35 : 1;
-    ctx.translate(p.x, y);
-    ctx.rotate(p.tilt);
-    if (img) ctx.drawImage(img, -38, -38, 76, 76);
-    ctx.restore();
 
-    ctx.globalAlpha = 0.5;
+    ctx.save();
+    ctx.globalAlpha = 0.32;
     ctx.fillStyle = '#9be7ff';
     ctx.beginPath();
-    ctx.ellipse(p.x, y + 30, 16, 5, 0, 0, TAU);
+    ctx.ellipse(p.x, y + p.drawH * 0.34, p.drawW * 0.26, 4, 0, 0, TAU);
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(p.x, y);
+    ctx.rotate(p.tilt);
+    ctx.translate(-p.x, -y);
+    drawAnimator(ctx, this.images, p.anim, p.x, y, p.scale, p.row, blink ? 0.35 : 1, false);
+    ctx.restore();
   }
 
   drawEnemies(ctx) {
     for (const enemy of this.enemies) {
-      const img = this.images.get(enemy.species.id);
-      const flash = this.clock - enemy.hitAt < 0.08;
+      if (!enemy.anim) continue;
+      const flash = this.clock - enemy.hitAt < 0.09;
       const bob = Math.sin((this.clock + enemy.baseX) * 3) * 4;
+      const y = enemy.y + bob;
       ctx.save();
-      ctx.translate(enemy.x, enemy.y + bob);
-      const tilt = clamp((enemy.x - enemy.baseX) * 0.002, -0.2, 0.2);
+      ctx.translate(enemy.x, y);
+      const tilt = enemy.tilt || 0;
       ctx.rotate(tilt);
-      if (img) {
-        ctx.globalAlpha = 1;
-        ctx.drawImage(img, -enemy.size / 2, -enemy.size / 2, enemy.size, enemy.size);
-      }
-      if (flash) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.6;
-        if (img) ctx.drawImage(img, -enemy.size / 2, -enemy.size / 2, enemy.size, enemy.size);
-      }
+      ctx.translate(-enemy.x, -y);
+      drawAnimator(ctx, this.images, enemy.anim, enemy.x, y, enemy.scale, enemy.row, 1, flash);
       ctx.restore();
 
-      if (enemy.hp < enemy.maxHp) {
-        const w = enemy.size * 0.7;
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillRect(enemy.x - w / 2, enemy.y - enemy.size / 2 - 9, w, 4);
-        ctx.fillStyle = enemy.tier === 'elite' ? '#ffb457' : '#8fe6a8';
-        ctx.fillRect(enemy.x - w / 2, enemy.y - enemy.size / 2 - 9, w * (enemy.hp / enemy.maxHp), 4);
-      }
     }
   }
 
   drawBoss(ctx) {
     const boss = this.boss;
-    if (!boss) return;
-    const img = this.images.get(boss.species.id);
+    if (!boss || !boss.anim) return;
     const flash = this.clock - boss.hitAt < 0.1;
     const bob = Math.sin(this.clock * 1.6) * 6;
-    ctx.save();
-    ctx.translate(boss.x, boss.y + bob);
-    if (img) ctx.drawImage(img, -boss.size / 2, -boss.size / 2, boss.size, boss.size);
-    if (flash) {
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.65;
-      if (img) ctx.drawImage(img, -boss.size / 2, -boss.size / 2, boss.size, boss.size);
-    }
-    ctx.restore();
+    const y = boss.y + bob;
 
-    ctx.globalAlpha = 0.22 + Math.sin(this.clock * 3) * 0.06;
+    ctx.save();
+    ctx.globalAlpha = 0.2 + Math.sin(this.clock * 3) * 0.05;
     ctx.fillStyle = boss.species.id === 144 ? '#8fe6ff' : boss.species.id === 145 ? '#ffe066' : '#ff9a4d';
     ctx.beginPath();
-    ctx.arc(boss.x, boss.y + bob, boss.size * 0.62, 0, TAU);
+    ctx.arc(boss.x, y, boss.drawW * 0.58, 0, TAU);
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    drawAnimator(ctx, this.images, boss.anim, boss.x, y, boss.scale, boss.row, boss.dead ? Math.max(0, boss.dying / 1.4) : 1, flash);
   }
 
   drawBullets(ctx) {
+    ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const bullet of this.playerBullets) {
-      if (!bullet.active) continue;
-      ctx.fillStyle = '#bff4ff';
-      ctx.beginPath();
-      ctx.ellipse(bullet.x, bullet.y, bullet.r, bullet.r * 2.6, 0, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, bullet.r * 0.55, 0, TAU);
-      ctx.fill();
+      if (bullet.active) drawBullet(ctx, bullet);
     }
+    ctx.restore();
     for (const bullet of this.enemyBullets) {
-      if (!bullet.active) continue;
-      ctx.fillStyle = bullet.color;
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, bullet.r, 0, TAU);
-      ctx.fill();
-      ctx.globalAlpha = 0.45;
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, bullet.r * 2, 0, TAU);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+      if (bullet.active) drawBullet(ctx, bullet);
     }
-    ctx.globalCompositeOperation = 'source-over';
   }
 
   drawDrops(ctx) {
+    const d = CONFIG.drops;
+    const blinkWindow = d.blinkMs / 1000;
     for (const drop of this.drops) {
-      const pulse = 1 + Math.sin(drop.t * 6) * 0.12;
-      const r = CONFIG.drops.radius * pulse;
+      const blinking = drop.life < blinkWindow && Math.floor(drop.t * 8) % 2 === 0;
+      const alpha = blinking ? 0.35 : 1;
+      const size = d.iconSize;
+      const bob = Math.sin(drop.t * 4) * 1.5;
+      const img = this.images.get(`item:${drop.itemId}`);
       ctx.save();
-      ctx.translate(drop.x, drop.y);
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = 'rgba(155,231,255,0.35)';
+      ctx.globalAlpha = alpha * 0.5;
+      ctx.fillStyle = 'rgba(140,220,255,0.35)';
       ctx.beginPath();
-      ctx.arc(0, 0, r * 1.8, 0, TAU);
+      ctx.arc(drop.x, drop.y + bob, size * 0.72, 0, TAU);
       ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = '#0e2a3a';
-      ctx.beginPath();
-      ctx.arc(0, 0, r, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = '#9be7ff';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.fillStyle = '#9be7ff';
-      ctx.beginPath();
-      ctx.moveTo(0, -r * 0.55);
-      ctx.lineTo(r * 0.5, 0);
-      ctx.lineTo(r * 0.18, 0);
-      ctx.lineTo(r * 0.18, r * 0.55);
-      ctx.lineTo(-r * 0.18, r * 0.55);
-      ctx.lineTo(-r * 0.18, 0);
-      ctx.lineTo(-r * 0.5, 0);
-      ctx.closePath();
-      ctx.fill();
+      ctx.globalAlpha = alpha;
+      if (img) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, drop.x - size / 2, drop.y - size / 2 + bob, size, size);
+      } else {
+        ctx.fillStyle = '#9be7ff';
+        ctx.beginPath();
+        ctx.arc(drop.x, drop.y + bob, size * 0.3, 0, TAU);
+        ctx.fill();
+      }
       ctx.restore();
     }
   }
@@ -680,7 +699,7 @@ export class Game {
     ctx.fillStyle = '#dce9ff';
     ctx.font = '10px "Segoe UI", system-ui, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`HP ${Math.ceil(p.hp)}/${Math.round(p.maxHp)}`, 14, 36);
+    ctx.fillText(`HP ${Math.ceil(p.hp)}/${Math.ceil(p.maxHp)}`, 14, 36);
 
     const expNeed = CONFIG.exp.toNext(p.level);
     const expRatio = p.level >= CONFIG.player.levelCap ? 1 : clamp(p.exp / expNeed, 0, 1);
@@ -710,10 +729,13 @@ export class Game {
     ctx.textAlign = 'left';
     ctx.font = '11px "Segoe UI", system-ui, sans-serif';
     ctx.fillStyle = '#9be7ff';
-    ctx.fillText(`${skill.skillName} Lv.${skill.skillLevel}`, 14, 74);
+    const overload = skill.skillLevel >= 5 ? skill.overloadCount : 0;
+    const skillLabel = `${skill.skillName} Lv.${skill.skillLevel}${overload ? `+${overload}` : ''}`;
+    ctx.fillText(skillLabel, 14, 74);
+    const dotsX = 14 + ctx.measureText(skillLabel).width + 8;
     for (let i = 0; i < 5; i += 1) {
       ctx.fillStyle = i < skill.skillLevel ? '#9be7ff' : 'rgba(255,255,255,0.18)';
-      ctx.fillRect(72 + i * 12, 66, 8, 8);
+      ctx.fillRect(dotsX + i * 12, 66, 8, 8);
     }
     ctx.restore();
 

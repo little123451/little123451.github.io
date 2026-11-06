@@ -1,0 +1,55 @@
+export const SCENES = {
+  sky: {
+    name: '天空',
+    sky: ['#0b1430', '#05070f'],
+    far: '#0a1a33',
+    farEdge: '#0d2140',
+    cloud: '#7fa6d8',
+    cloudAlpha: 0.16,
+    fog: 'rgba(40,70,120,0.18)',
+    accent: '#9be7ff',
+    weather: null,
+    stars: true,
+  },
+  ice: {
+    name: '冰原',
+    sky: ['#082531', '#040b12'],
+    far: '#0d3442',
+    farEdge: '#155066',
+    cloud: '#bfe9f5',
+    cloudAlpha: 0.14,
+    fog: 'rgba(120,200,220,0.16)',
+    accent: '#8fe6ff',
+    weather: 'snow',
+    stars: false,
+  },
+  storm: {
+    name: '雷暴',
+    sky: ['#151b2b', '#05070c'],
+    far: '#1a2233',
+    farEdge: '#243046',
+    cloud: '#5a6a86',
+    cloudAlpha: 0.22,
+    fog: 'rgba(60,70,100,0.22)',
+    accent: '#ffe066',
+    weather: 'rain',
+    stars: false,
+    lightning: true,
+  },
+  volcano: {
+    name: '火山',
+    sky: ['#2a0d0d', '#120608'],
+    far: '#3a1512',
+    farEdge: '#5a231b',
+    cloud: '#6a352a',
+    cloudAlpha: 0.2,
+    fog: 'rgba(120,50,30,0.2)',
+    accent: '#ff9a4d',
+    weather: 'ash',
+    stars: false,
+  },
+};
+
+export const SCENE_ORDER = ['sky', 'ice', 'storm', 'volcano'];
+
+export const BOSS_SCENES = { 144: 'ice', 145: 'storm', 146: 'volcano' };

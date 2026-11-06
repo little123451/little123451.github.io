@@ -1,11 +1,15 @@
 import { CONFIG } from './config.js';
 import { loadPokedex, deriveStats, getSpecies } from './data/pokedex.js';
 import { DEFAULT_MECH } from './data/roster.js';
+import { ITEMS } from './data/items.js';
+import { attackFor, damageClassForMove } from './data/combatFormulas.js';
+import { getMoveForSkill, setMoveData } from './data/skills.js';
 import { loadImages } from './core/assets.js';
 import { Input } from './core/input.js';
 import { Audio } from './core/audio.js';
 import { createLoop } from './core/loop.js';
 import { readAll } from './core/telemetry.js';
+import { drawIdlePreview } from './game/animator.js';
 import { Game } from './game/game.js';
 
 const TYPE_ZH = {
@@ -55,6 +59,7 @@ const els = {
 
 const ctx = els.canvas.getContext('2d', { alpha: false });
 let pokedex = [];
+let pmd = {};
 let images = new Map();
 let game = null;
 let loop = null;
@@ -66,7 +71,7 @@ function fitCanvas() {
   els.canvas.width = Math.round(CONFIG.view.width * dpr);
   els.canvas.height = Math.round(CONFIG.view.height * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingEnabled = false;
 }
 
 function show(el) {
@@ -95,18 +100,35 @@ function setMuted(muted) {
 
 function fillMechCard(species) {
   const stats = deriveStats(species);
-  els.mechSprite.src = species.sprite;
-  els.mechSprite.alt = species.nameZh;
+  els.mechSprite.setAttribute('aria-label', species.nameZh);
   els.mechName.textContent = species.nameZh;
   els.mechTypes.textContent = species.types.map((t) => TYPE_ZH[t] || t).join(' · ');
+  const move = getMoveForSkill('gust');
+  const perShot = attackFor('player', species, damageClassForMove(move), (move?.power ?? 40) / 150, 1, 1);
   els.mechStats.innerHTML = [
     ['生命', Math.round(stats.maxHp)],
-    ['攻击', Math.round(stats.baseDamage * 10) / 10],
+    ['单发', Math.round(perShot * 10) / 10],
     ['防御', species.stats.defense],
     ['速度', Math.round(stats.moveSpeed)],
   ]
     .map(([label, value]) => `<li>${label} <b>${value}</b></li>`)
     .join('');
+
+  const canvas = els.mechSprite;
+  const previewCtx = canvas.getContext('2d');
+  const meta = pmd[species.id];
+  const slot = meta?.anims?.idle;
+  const img = slot ? images.get(slot.src) : null;
+  const dpr = 2;
+  canvas.width = 96 * dpr;
+  canvas.height = 160 * dpr;
+  previewCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  previewCtx.clearRect(0, 0, 96, 160);
+  previewCtx.imageSmoothingEnabled = false;
+  if (slot && img) {
+    const scale = Math.max(1, Math.min(4, Math.floor(Math.min(96 / slot.fw, 160 / slot.fh))));
+    drawIdlePreview(previewCtx, images, meta, 48, 108, scale, 0);
+  }
 }
 
 function startRun() {
@@ -140,13 +162,33 @@ async function boot() {
 
   try {
     pokedex = await loadPokedex();
+    const pmdRes = await fetch('data/pmd.json', { cache: 'force-cache' });
+    if (!pmdRes.ok) throw new Error(`pmd ${pmdRes.status}`);
+    pmd = await pmdRes.json();
+    try {
+      const movesRes = await fetch('data/moves.json', { cache: 'force-cache' });
+      if (movesRes.ok) setMoveData(await movesRes.json());
+      else console.warn('moves.json not found, using fallback power/pp');
+    } catch (moveErr) {
+      console.warn('moves.json load failed, using fallback power/pp', moveErr);
+    }
   } catch (err) {
     els.loadText.textContent = '图鉴加载失败，请刷新重试';
     console.error(err);
     return;
   }
 
-  const entries = pokedex.map((species) => ({ key: species.id, src: species.sprite }));
+  const entries = [];
+  for (const species of pokedex) {
+    const meta = pmd[species.id];
+    if (!meta) continue;
+    for (const slot of Object.values(meta.anims)) {
+      entries.push({ key: slot.src, src: slot.src });
+    }
+  }
+  for (const [itemId, item] of Object.entries(ITEMS)) {
+    if (item.icon) entries.push({ key: `item:${itemId}`, src: item.icon });
+  }
   try {
     images = await loadImages(entries, (ratio) => {
       els.loadBar.style.width = `${Math.round(ratio * 100)}%`;
@@ -166,6 +208,7 @@ async function boot() {
   game = new Game({
     ctx,
     pokedex,
+    pmd,
     images,
     input,
     audio: Audio,

@@ -1,0 +1,13 @@
+{
+  "gust": {
+    "id": 16,
+    "name": "gust",
+    "nameZh": "起风",
+    "type": "flying",
+    "damageClass": "special",
+    "power": 40,
+    "pp": 35,
+    "accuracy": 100,
+    "priority": 0
+  }
+}

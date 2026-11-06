@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://pokeapi.co/api/v2';
-const SPRITES = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home';
 const CRIES = 'https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest';
 const GEN1_MAX = 151;
 const FORCE = process.argv.includes('--force');
@@ -79,9 +78,7 @@ for (const target of targets) {
     pokemon.stats.map((s) => [s.stat.name.replace('special-attack', 'spAttack').replace('special-defense', 'spDefense'), s.base_stat]),
   );
   const total = Object.values(stats).reduce((a, b) => a + b, 0);
-  const sprite = `assets/sprites/${target.id}.png`;
   const cry = `assets/cries/${target.id}.ogg`;
-  const spriteState = await download(`${SPRITES}/${target.id}.png`, join(ROOT, sprite));
   const cryState = await download(`${CRIES}/${target.id}.ogg`, join(ROOT, cry));
 
   pokedex.push({
@@ -100,13 +97,12 @@ for (const target of targets) {
     height: pokemon.height,
     weight: pokemon.weight,
     tier: tierOf(target.id, total),
-    sprite,
     cry,
   });
 
   console.log(
     `${String(target.id).padStart(3)} ${pokemon.name.padEnd(12)} total=${String(total).padStart(3)} ` +
-      `tier=${tierOf(target.id, total).padEnd(6)} sprite=${spriteState} cry=${cryState}`,
+      `tier=${tierOf(target.id, total).padEnd(6)} cry=${cryState}`,
   );
   await sleep(DELAY_MS);
 }
