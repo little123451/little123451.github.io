@@ -1,0 +1,12 @@
+﻿{
+  "name": "rocket-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "火箭队模拟器：基于 PokeAPI 第一世代数据的宝可梦经营游戏",
+  "type": "module",
+  "scripts": {
+    "serve": "node tools/serve.mjs 8123",
+    "fetch": "node tools/fetch-data.mjs",
+    "test": "node tools/test-logic.mjs && node tools/test-ui.mjs"
+  }
+}
