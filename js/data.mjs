@@ -1,6 +1,26 @@
 // 数据层：加载 dex.json，提供中文词表与查表工具
 export const DEX = { species: {}, natures: [], count: 0 };
 
+// 自定义实验数据（data/experiments.json），与图鉴数据分开维护
+export const EXPERIMENTS_DATA = { species: {} };
+let experimentIndex = new Map();
+
+export function initExperiments(payload) {
+  EXPERIMENTS_DATA.species = payload?.species || {};
+  experimentIndex = new Map();
+  for (const entry of Object.values(EXPERIMENTS_DATA.species)) {
+    for (const e of entry.experiments || []) experimentIndex.set(e.id, e);
+  }
+}
+
+export function customExperiments(dexId) {
+  return EXPERIMENTS_DATA.species[String(dexId)]?.experiments || null;
+}
+
+export function experimentById(id) {
+  return experimentIndex.get(id) || null;
+}
+
 export const TYPES_ZH = {
   normal: '一般', fire: '火', water: '水', electric: '电', grass: '草', ice: '冰',
   fighting: '格斗', poison: '毒', ground: '地面', flying: '飞行', psychic: '超能力',
@@ -43,6 +63,33 @@ export const ITEM_DESC = {
 
 export const STONE_ITEMS = ['fire-stone', 'water-stone', 'thunder-stone', 'leaf-stone', 'moon-stone', 'sun-stone', 'ice-stone'];
 
+// 道具图标：用游戏内道具像素图（tools/fetch-item-sprites.mjs 下载到 data/items/）
+// 本站道具 id → PokeAPI sprites/items 里的文件名；本地缺图时回退 jsDelivr
+export const ITEM_SPRITE_SLUG = {
+  'fire-stone': 'fire-stone',
+  'water-stone': 'water-stone',
+  'thunder-stone': 'thunder-stone',
+  'leaf-stone': 'leaf-stone',
+  'moon-stone': 'moon-stone',
+  'sun-stone': 'sun-stone',
+  'ice-stone': 'ice-stone',
+  // 第一世代没有通信电缆，借用第八世代“联系绳”的官方图标
+  'trade-cable': 'linking-cord',
+};
+
+export const itemSprite = (item) => `data/items/${item}.png`;
+
+export function remoteItemSprite(item) {
+  const slug = ITEM_SPRITE_SLUG[item] || item;
+  return `https://gcore.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/items/${slug}.png`;
+}
+
+export function itemIcon(item, size = 16) {
+  // 石头是 30×30 像素画，用最近邻放大更清晰；通信电缆是 128×128 的绘制图，保持平滑
+  const render = item === 'trade-cable' ? 'smooth' : 'pixel';
+  return `<img class="item-ico ${render}" width="${size}" height="${size}" src="${itemSprite(item)}" alt="" onerror="this.onerror=null;this.src='${remoteItemSprite(item)}'" />`;
+}
+
 export function initDex(json) {
   DEX.species = json.species;
   DEX.natures = json.natures;
@@ -79,15 +126,6 @@ export function remoteSprite(id) {
 
 export const art = (id) => sprite(id);
 
-export function eggGroupsZh(list) {
-  return (list || []).map(eggZh).join(' / ') || '—';
-}
-
-export function displayName(idOrMon) {
-  const id = idOrMon.dexId ?? idOrMon;
-  return sp(id)?.zh ?? String(id);
-}
-
 // 实际能力值（含个体值、性格修正）
 export function calcStats(mon) {
   const s = sp(mon.dexId);
@@ -108,8 +146,4 @@ export function calcStats(mon) {
 
 function mapStatName(key) {
   return { hp: 'hp', atk: 'attack', def: 'defense', spa: 'special-attack', spd: 'special-defense', spe: 'speed' }[key];
-}
-
-export function ivTotal(mon) {
-  return Object.values(mon.ivs || {}).reduce((a, b) => a + b, 0);
 }

@@ -1,5 +1,6 @@
-// 极简静态服务器：node tools/serve.mjs [port]
+// 极简静态服务器：node tools/serve.mjs [port] [host]
 // 用于本地试玩（ES 模块必须走 HTTP，不能直接双击 index.html）
+// 手机真机预览：node tools/serve.mjs 8123 0.0.0.0，再用电脑局域网 IP 打开
 import { createServer } from 'node:http';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -8,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PORT = Number(process.argv[2] || 8123);
+const HOST = process.argv[3] || '127.0.0.1';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -52,7 +54,8 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, HOST, () => {
   console.log(`serving ${ROOT}`);
-  console.log(`http://127.0.0.1:${PORT}/`);
+  console.log(`http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}/`);
+  if (HOST === '0.0.0.0') console.log('局域网内可用本机 IP 访问（手机与电脑需在同一网络）');
 });

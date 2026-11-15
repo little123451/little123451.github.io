@@ -2,97 +2,223 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a1120" />
     <title>火箭队模拟器 · 第一世代</title>
     <meta name="description" content="火箭队模拟器：扮演年轻的大木博士，替火箭队管理与运营抢来的宝可梦，同时为日后的宝可梦图鉴积累研究数据。集齐 151 只图鉴即胜利。" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>" />
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
-    <div id="app">
-      <header class="topbar">
-        <div class="brand">
-          <div class="logo">🚀</div>
-          <div class="brand-text">
-            <h1>火箭队模拟器</h1>
-            <p>第一世代 · 大木博士的暗面档案</p>
+    <div id="app" class="app">
+      <!-- 顶部 HUD：身份 / 时间 / 倍速 / 菜单 / 核心数值 -->
+      <header class="hud">
+        <div class="hud-main">
+          <div class="brand">
+            <div class="logo">🚀</div>
+            <div class="brand-text">
+              <h1>火箭队模拟器</h1>
+              <p>第 <b id="day">1</b> 天 · 大木博士的暗面档案</p>
+            </div>
+          </div>
+          <div class="hud-tools">
+            <div class="speeds" id="speeds">
+              <button data-act="speed" data-speed="0" title="暂停">⏸</button>
+              <button data-act="speed" data-speed="1" class="on">1×</button>
+              <button data-act="speed" data-speed="2">2×</button>
+              <button data-act="speed" data-speed="3">3×</button>
+            </div>
+            <button class="icon-btn" data-act="open-menu" aria-label="打开菜单">☰</button>
           </div>
         </div>
 
-        <div class="stats">
-          <div class="stat gold"><span class="ico">🪙</span><b id="gold">0</b><label>资金</label></div>
-          <div class="stat berry"><span class="ico">🍒</span><b id="berries">0</b><label>树果</label></div>
-          <div class="stat rep"><span class="ico">⭐</span><b id="rep">0</b><label>声望</label></div>
-          <div class="stat dex" data-act="open-dex" role="button" tabindex="0">
+        <div class="hud-stats">
+          <div class="stat gold" title="资金"><span class="ico">🪙</span><b id="gold">0</b><label>资金</label></div>
+          <div class="stat candy" title="经验糖果"><span class="ico">🍬</span><b id="candies">0</b><label>经验糖果</label></div>
+          <div class="stat rep" title="声望"><span class="ico">⭐</span><b id="rep">0</b><label>声望</label></div>
+          <div class="stat rank" data-act="open-ranks" role="button" tabindex="0" title="查看职级">
+            <span class="ico">🎖</span><b id="rank">见习研究员</b><label>职级</label>
+          </div>
+          <div class="stat dex" data-act="tab" data-tab="dex" role="button" tabindex="0" title="打开图鉴">
             <span class="ico">📖</span><b id="dex">0/151</b><label>图鉴</label>
-          </div>
-        </div>
-
-        <div class="clock">
-          <div class="day">第 <b id="day">1</b> 天</div>
-          <div class="speeds" id="speeds">
-            <button data-act="speed" data-speed="0" title="暂停">⏸</button>
-            <button data-act="speed" data-speed="1" class="on">1×</button>
-            <button data-act="speed" data-speed="2">2×</button>
-            <button data-act="speed" data-speed="3">3×</button>
-          </div>
-          <div class="menu">
-            <button data-act="open-help" class="ghost">玩法</button>
-            <button data-act="save" class="ghost">保存</button>
-            <button data-act="reset" class="ghost danger">重开</button>
           </div>
         </div>
       </header>
 
-      <div id="win-banner" class="win-banner hidden">🏆 图鉴完成：151 只全部记录 · 大木博士的暗面档案已补全</div>
+      <div id="win-banner" class="banner win hidden">🏆 图鉴完成：151 只全部记录 · 大木博士的暗面档案已补全</div>
+      <div id="quit-banner" class="banner quit hidden">🚪 你已离开火箭队 · 本局结束（菜单里查看结算）</div>
 
-      <main class="layout">
-        <section class="panel pens-panel">
-          <div class="panel-head">
-            <h2>培育栏</h2>
-            <span class="hint" id="pen-hint"></span>
-            <button class="mini" data-act="add-pen">扩建 +</button>
+      <main class="main" id="main">
+        <!-- 培育 -->
+        <section class="page active" id="page-pens" role="tabpanel" aria-label="培育">
+          <div class="hero hero-pens">
+            <div class="hero-art" id="hero-art-pens"></div>
+            <div class="hero-copy">
+              <span class="hero-kicker">BREEDING</span>
+              <h2>培育栏</h2>
+              <p id="hero-sub-pens">—</p>
+            </div>
           </div>
-          <div id="pens" class="pens"></div>
 
-          <div class="panel-head eggs-head">
-            <h2>孵化器</h2>
-            <span class="hint" id="egg-hint"></span>
-          </div>
-          <div id="eggs" class="eggs"></div>
-
-          <div class="panel-head eggs-head">
-            <h2>实验室</h2>
-            <span class="hint" id="lab-hint"></span>
-          </div>
-          <div id="lab" class="lab"></div>
-        </section>
-
-        <aside class="side">
           <section class="panel">
             <div class="panel-head">
-              <h2>部门需求</h2>
+              <h3>培育栏</h3>
+              <span class="hint" id="pen-hint"></span>
+              <button class="mini" data-act="open-breedlog">失败记录</button>
+              <button class="mini" data-act="add-pen">扩建 +</button>
+            </div>
+            <div id="pens" class="pens"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>孵化器</h3>
+              <span class="hint" id="egg-hint"></span>
+            </div>
+            <div id="eggs" class="eggs"></div>
+          </section>
+        </section>
+
+        <!-- 实验室 -->
+        <section class="page" id="page-lab" role="tabpanel" aria-label="实验室">
+          <div class="hero hero-lab">
+            <div class="hero-art" id="hero-art-lab"></div>
+            <div class="hero-copy">
+              <span class="hero-kicker">RESEARCH</span>
+              <h2>实验室</h2>
+              <p id="hero-sub-lab">—</p>
+            </div>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>实验台</h3>
+              <span class="hint" id="lab-hint"></span>
+            </div>
+            <div id="lab" class="lab"></div>
+          </section>
+        </section>
+
+        <!-- 围栏 -->
+        <section class="page" id="page-idle" role="tabpanel" aria-label="围栏">
+          <div class="hero hero-idle">
+            <div class="hero-art" id="hero-art-idle"></div>
+            <div class="hero-copy">
+              <span class="hero-kicker">HOLDING</span>
+              <h2>围栏</h2>
+              <p id="hero-sub-idle">—</p>
+            </div>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>闲置宝可梦</h3>
+              <span class="hint" id="idle-hint"></span>
+            </div>
+            <div id="idle-alert" class="idle-alert hidden"></div>
+            <div id="idle" class="idle-grid"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>驻守</h3>
+              <span class="hint">暂未启用 · 用于抵挡前来营救宝可梦的正义之士</span>
+            </div>
+            <div class="guard-grid">
+              <div class="guard-slot"><span class="guard-lock">🔒</span><b>驻守位 1</b><small>未启用</small></div>
+              <div class="guard-slot"><span class="guard-lock">🔒</span><b>驻守位 2</b><small>未启用</small></div>
+              <div class="guard-slot"><span class="guard-lock">🔒</span><b>驻守位 3</b><small>未启用</small></div>
+              <div class="guard-slot"><span class="guard-lock">🔒</span><b>驻守位 4</b><small>未启用</small></div>
+            </div>
+          </section>
+        </section>
+
+        <!-- 经营：需求 / 市场 / 设施 / 日志 -->
+        <section class="page" id="page-market" role="tabpanel" aria-label="经营">
+          <div class="hero hero-market">
+            <div class="hero-art static" aria-hidden="true"><span>🪙</span><span>💎</span><span>🍬</span><span>🧪</span></div>
+            <div class="hero-copy">
+              <span class="hero-kicker">BUSINESS</span>
+              <h2>经营</h2>
+              <p id="hero-sub-market">—</p>
+            </div>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>部门需求</h3>
               <span class="hint" id="order-hint"></span>
             </div>
+            <div id="rep-decay" class="rep-decay hidden"></div>
             <div id="orders" class="orders"></div>
           </section>
 
           <section class="panel">
-            <div class="panel-head"><h2>市场</h2><span class="hint" id="market-hint"></span></div>
+            <div class="panel-head">
+              <h3>市场</h3>
+              <span class="hint" id="market-hint"></span>
+            </div>
             <div id="shop" class="shop"></div>
           </section>
 
           <section class="panel">
-            <div class="panel-head"><h2>设施</h2></div>
+            <div class="panel-head">
+              <h3>设施</h3>
+              <span class="hint">职级决定能升到多高</span>
+            </div>
             <div id="upgrades" class="upgrades"></div>
           </section>
-        </aside>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>日志</h3>
+              <span class="hint">最近动态</span>
+            </div>
+            <div id="log" class="log"></div>
+          </section>
+        </section>
+
+        <!-- 图鉴 -->
+        <section class="page" id="page-dex" role="tabpanel" aria-label="图鉴">
+          <div class="hero hero-dex">
+            <div class="dex-ring" id="dex-ring"><span id="dex-ring-text">0/151</span></div>
+            <div class="hero-copy">
+              <span class="hero-kicker">ARCHIVE</span>
+              <h2>图鉴</h2>
+              <p id="hero-sub-dex">—</p>
+            </div>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>研究进度</h3>
+              <span class="hint">按物种研究完成度</span>
+            </div>
+            <div id="dex-page" class="dex-page"></div>
+          </section>
+        </section>
       </main>
 
-      <footer class="logbar">
-        <div class="log-title">日志</div>
-        <div id="log" class="log"></div>
-      </footer>
+      <!-- 底部 TAB -->
+      <nav class="tabbar" aria-label="主导航">
+        <button class="tab active" id="tab-pens" data-act="tab" data-tab="pens" aria-selected="true">
+          <span class="ti">🥚</span><span class="tl">培育</span>
+        </button>
+        <button class="tab" id="tab-lab" data-act="tab" data-tab="lab" aria-selected="false">
+          <span class="ti">🧪</span><span class="tl">实验室</span>
+        </button>
+        <button class="tab" id="tab-idle" data-act="tab" data-tab="idle" aria-selected="false">
+          <span class="ti">🏕</span><span class="tl">围栏</span>
+          <span class="badge hidden" id="badge-idle">0</span>
+        </button>
+        <button class="tab" id="tab-market" data-act="tab" data-tab="market" aria-selected="false">
+          <span class="ti">💰</span><span class="tl">经营</span>
+          <span class="badge hidden" id="badge-market">0</span>
+        </button>
+        <button class="tab" id="tab-dex" data-act="tab" data-tab="dex" aria-selected="false">
+          <span class="ti">📖</span><span class="tl">图鉴</span>
+        </button>
+      </nav>
     </div>
 
     <div id="modal" class="modal hidden" aria-hidden="true"></div>

@@ -1,15 +1,32 @@
 // 视图层：增量渲染（结构变化才重建 DOM，其余只更新数值与进度条）
 import * as L from './logic.mjs';
+import { CONFIG, RANKS, UPGRADE_INFO, ITEM_PRICES, maxTolerance, rankById } from './rules.mjs';
 import {
-  DEX, sp, art, sprite, remoteSprite, typeZh, typeColor, eggZh, calcStats, natureById, STAT_ZH,
-  ITEM_ZH, STONE_ITEMS, GROWTH_ZH, eggGroupsZh, ivTotal, bst,
+  DEX, sp, art, sprite, remoteSprite, typeZh, typeColor, calcStats, natureById, STAT_ZH,
+  ITEM_ZH, STONE_ITEMS, itemIcon,
 } from './data.mjs';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (id) => document.getElementById(id);
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// 耐受度 → 灰度：满耐受度彩色，≤1 完全黑白
+function toleranceGray(mon) {
+  if (!mon) return 0;
+  if (mon.tolerance <= 1) return 1;
+  const max = Math.max(1, maxTolerance(mon));
+  return Math.max(0, Math.min(1, 1 - mon.tolerance / max));
+}
+const spriteFilter = (mon) => {
+  const g = toleranceGray(mon);
+  return g > 0 ? ` style="filter:grayscale(${g.toFixed(3)})"` : '';
+};
+const applyToleranceFilter = (img, mon) => {
+  if (!img) return;
+  const g = toleranceGray(mon);
+  img.style.filter = g > 0 ? `grayscale(${g.toFixed(3)})` : '';
+};
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
 const pct = (v, max) => (max <= 0 ? 0 : Math.max(0, Math.min(100, (v / max) * 100)));
-const fmtPct = (v, max) => `${pct(v, max).toFixed(1)}%`;
 const imgFallback = (id) => ` onerror="this.onerror=null;this.src='${remoteSprite(Number(id))}'"`;
 const setText = (node, text) => {
   if (node && node.textContent !== text) node.textContent = text;
@@ -26,8 +43,25 @@ let modal = null;
 let logs = [];
 let toastTimer = null;
 
+// 底部 TAB：培育 / 实验室 / 围栏 / 经营 / 图鉴
+const TABS = ['pens', 'lab', 'idle', 'market', 'dex'];
+let activeTab = 'pens';
+
 // 结构签名：只有签名变化时才重建对应区域的 DOM，避免 hover 状态被反复重置
-const sig = { pens: null, eggs: null, lab: null, orders: null, shop: null, upgrades: null, log: null };
+const sig = {
+  pens: null,
+  eggs: null,
+  lab: null,
+  idle: null,
+  orders: null,
+  shop: null,
+  upgrades: null,
+  log: null,
+  dex: null,
+  heroPens: null,
+  heroLab: null,
+  heroIdle: null,
+};
 
 export function mount(state, options) {
   S = state;
@@ -35,16 +69,47 @@ export function mount(state, options) {
   resetSignatures();
   bind();
   render();
+  renderTabs();
 }
 
 export function setState(next) {
   S = next;
   resetSignatures();
+  activeTab = 'pens';
+  logs = [];
+  closeModal();
   render();
+  renderTabs();
 }
 
 function resetSignatures() {
-  sig.pens = sig.eggs = sig.lab = sig.orders = sig.shop = sig.upgrades = sig.log = null;
+  sig.pens = sig.eggs = sig.lab = sig.idle = sig.orders = sig.shop = sig.upgrades = sig.log = null;
+  sig.dex = sig.heroPens = sig.heroLab = sig.heroIdle = null;
+}
+
+// ---------- TAB 切换 ----------
+function renderTabs() {
+  for (const t of TABS) {
+    const page = el(`page-${t}`);
+    const btn = el(`tab-${t}`);
+    if (page) page.classList.toggle('active', t === activeTab);
+    if (btn) {
+      btn.classList.toggle('active', t === activeTab);
+      btn.setAttribute('aria-selected', t === activeTab ? 'true' : 'false');
+    }
+  }
+}
+
+function setTab(tab) {
+  const next = TABS.includes(tab) ? tab : 'pens';
+  if (next === activeTab) {
+    renderTabs();
+    return;
+  }
+  activeTab = next;
+  renderTabs();
+  const main = el('main');
+  if (main && typeof main.scrollTo === 'function') main.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 export function getSpeed() {
@@ -70,7 +135,7 @@ export function pushLog(msg, type = 'info') {
 export function handleEvents(events) {
   let important = 0;
   for (const e of events) {
-    if (e.type === 'level') continue;
+    if (e.type === 'level' || e.type === 'expire') continue;
     pushLog(e.msg, e.type);
     if (e.type === 'win') {
       toast(e.msg, 'good');
@@ -81,8 +146,13 @@ export function handleEvents(events) {
       toast(e.msg, e.type === 'warn' ? 'bad' : 'good');
       important++;
     }
+    if (e.type === 'egg' && Number.isInteger(e.pen)) playPenLove(e.pen);
+    if (e.fight && Number.isInteger(e.pen)) playPenClash(e.pen);
   }
 }
+
+// 蛋组知识的展示 key：知识变化时需要重建卡片
+const knownKey = (dexId) => L.knownEggGroups(S, dexId).join(',');
 
 // ---------- 事件绑定 ----------
 function bind() {
@@ -112,17 +182,47 @@ function handleAction(act, d) {
     case 'save':
       hooks.onSave?.();
       break;
-    case 'reset':
-      openModal('reset');
+    case 'quit':
+      openModal(S.quit ? 'quitdone' : 'quit');
+      break;
+    case 'confirm-quit': {
+      const r = L.quitGame(S);
+      toast(r.msg, 'bad');
+      openModal('quitdone');
+      render();
+      break;
+    }
+    case 'new-game':
+      closeModal();
+      hooks.onReset?.();
       break;
     case 'open-help':
       openModal('help');
       break;
-    case 'open-dex':
-      openModal('dex');
+    case 'open-menu':
+      openModal('menu');
       break;
+    case 'tab':
+      setTab(d.tab);
+      break;
+    case 'open-dex':
+      setTab('dex');
+      break;
+    case 'open-ranks':
+      openModal('ranks');
+      break;
+    case 'promote': {
+      const r = L.promote(S);
+      toast(r.msg, r.ok ? 'good' : 'bad');
+      openModal('ranks');
+      render();
+      break;
+    }
     case 'close':
       closeModal();
+      break;
+    case 'open-breedlog':
+      openModal('breedlog');
       break;
     case 'add-pen': {
       const r = L.buyUpgrade(S, 'pens');
@@ -132,6 +232,9 @@ function handleAction(act, d) {
     }
     case 'open-mon':
       openModal('mon', { uid: d.uid });
+      break;
+    case 'open-species':
+      openModal('species', { id: Number(d.id) });
       break;
     case 'open-picker':
       openModal('picker', { pen: Number(d.pen), slot: d.slot });
@@ -181,10 +284,8 @@ function handleAction(act, d) {
     case 'open-lab-picker':
       openModal('labpicker', { slot: Number(d.slot) });
       break;
-    case 'lab-confirm':
-      openModal('labconfirm', { slot: Number(d.slot), uid: d.uid });
-      break;
     case 'assign-lab': {
+      // 不再二次确认：选中即送入（选择弹窗里已写明不可取出）
       const r = L.assignLab(S, Number(d.slot), d.uid);
       toast(r.msg, r.ok ? 'good' : 'bad');
       if (r.ok) closeModal();
@@ -198,15 +299,18 @@ function handleAction(act, d) {
       const r = L.startExperiment(S, d.uid, d.exp);
       toast(r.msg, r.ok ? 'good' : 'bad');
       if (r.events) handleEvents(r.events);
-      if (r.released) closeModal();
-      else openModal('labexp', { uid: d.uid });
+      const won = r.events?.some((e) => e.type === 'win');
+      if (r.ok) {
+        if (!won) closeModal();
+      } else {
+        openModal('labexp', { uid: d.uid });
+      }
       render();
+      if (r.ok && !r.released) playLabHit(d.uid, r.intensity);
       break;
     }
-    case 'release-mon':
-      openModal('release', { uid: d.uid });
-      break;
-    case 'confirm-release': {
+    case 'release-mon': {
+      // 不再二次确认
       const r = L.releaseMon(S, d.uid, 'manual');
       toast(r.msg, r.ok ? 'good' : 'bad');
       closeModal();
@@ -232,8 +336,14 @@ function handleAction(act, d) {
       render();
       break;
     }
-    case 'buy-berries': {
-      const r = L.buyBerries(S, Number(d.qty));
+    case 'reroll-market': {
+      const r = L.rerollMarket(S);
+      toast(r.msg, r.ok ? 'good' : 'bad');
+      render();
+      break;
+    }
+    case 'buy-candy': {
+      const r = L.buyCandies(S, Number(d.qty));
       toast(r.msg, r.ok ? 'good' : 'bad');
       render();
       break;
@@ -250,10 +360,6 @@ function handleAction(act, d) {
       render();
       break;
     }
-    case 'confirm-reset':
-      closeModal();
-      hooks.onReset?.();
-      break;
     default:
       break;
   }
@@ -263,47 +369,127 @@ function handleAction(act, d) {
 export function render() {
   if (!S) return;
   renderTop();
+  ensureHeroes();
+  patchHeroText();
   ensurePens();
   patchPens();
   ensureEggs();
   patchEggs();
   ensureLab();
   patchLab();
+  ensureIdle();
+  patchIdle();
   ensureOrders();
   patchOrders();
   ensureShop();
   patchShop();
   ensureUpgrades();
   patchUpgrades();
+  ensureDexPage();
+  patchDexHero();
   renderLog();
+  patchLabExpModal();
 }
 
 function renderTop() {
   setText(el('gold'), fmt(S.gold));
-  setText(el('berries'), String(S.berries));
+  setText(el('candies'), String(S.candies));
   setText(el('rep'), String(Math.round(S.rep)));
+  setText(el('rank'), L.currentRank(S).name);
   setText(el('dex'), `${S.dex.length}/151`);
   setText(el('day'), String(Math.floor(S.day)));
   document.querySelectorAll('#speeds button').forEach((b) => {
     b.classList.toggle('on', Number(b.dataset.speed) === speed);
   });
   const banner = el('win-banner');
-  if (banner) banner.classList.toggle('hidden', !S.won);
+  if (banner) {
+    banner.textContent =
+      S.winKind === 'legendary'
+        ? '🏆 传说研究完成：干部与传说宝可梦'
+        : '🏆 图鉴完成：151 只全部记录 · 大木博士的暗面档案已补全';
+    banner.classList.toggle('hidden', !S.won);
+  }
+  const quitBanner = el('quit-banner');
+  if (quitBanner) quitBanner.classList.toggle('hidden', !S.quit);
+}
+
+// ---------- 顶部美术：每页的角色/内容缩影 ----------
+function uniqueSpecies(mons) {
+  const out = [];
+  for (const m of mons) if (m && !out.includes(m.dexId)) out.push(m.dexId);
+  return out;
+}
+
+function heroArtHtml(ids, emptyEmoji) {
+  if (!ids.length) return `<span class="hero-empty">${emptyEmoji}</span>`;
+  return ids
+    .slice(0, 4)
+    .map((id) => `<img src="${sprite(id)}"${imgFallback(id)} alt="" />`)
+    .join('');
+}
+
+function ensureHeroes() {
+  const penIds = uniqueSpecies(L.penMons(S));
+  const penSig = penIds.join(',');
+  if (penSig !== sig.heroPens) {
+    sig.heroPens = penSig;
+    const host = el('hero-art-pens');
+    if (host) host.innerHTML = heroArtHtml(penIds, '🥚');
+  }
+
+  const labIds = uniqueSpecies(S.lab.map((slot) => L.monByUid(S, slot.uid)).filter(Boolean));
+  const labSig = labIds.join(',');
+  if (labSig !== sig.heroLab) {
+    sig.heroLab = labSig;
+    const host = el('hero-art-lab');
+    if (host) host.innerHTML = heroArtHtml(labIds, '🧪');
+  }
+
+  const idleIds = uniqueSpecies(L.idleMons(S));
+  const idleSig = idleIds.slice(0, 4).join(',') + `:${idleIds.length}`;
+  if (idleSig !== sig.heroIdle) {
+    sig.heroIdle = idleSig;
+    const host = el('hero-art-idle');
+    if (host) host.innerHTML = heroArtHtml(idleIds, '🏕');
+  }
+}
+
+function patchHeroText() {
+  const filled = S.lab.filter((slot) => slot.uid).length;
+  const idleCount = L.idleMons(S).length;
+  const conflicts = L.idleConflicts(S).length;
+  setText(el('hero-sub-pens'), `${S.pens.length} 个栏位 · ${S.eggs.length}/${L.eggSlots(S)} 枚蛋`);
+  setText(el('hero-sub-lab'), `${filled}/${S.lab.length} 个实验台`);
+  setText(el('hero-sub-idle'), `${idleCount} 只闲置${conflicts ? ` · ${conflicts} 组争斗` : ''}`);
+  setText(el('hero-sub-market'), `${L.deliverableOrders(S).length} 单可交付`);
+  setText(el('hero-sub-dex'), `已完成 ${S.dex.length}/${DEX.count}`);
+}
+
+function patchDexHero() {
+  const pct = Math.round((S.dex.length / Math.max(1, DEX.count)) * 100);
+  const ring = el('dex-ring');
+  if (ring) {
+    const bg = `conic-gradient(#f5c451 ${pct}%, rgba(31, 47, 74, 0.85) 0)`;
+    if (ring.style.background !== bg) ring.style.background = bg;
+  }
+  setText(el('dex-ring-text'), `${S.dex.length}/${DEX.count}`);
 }
 
 function typeBadges(types) {
   return types.map((t) => `<span class="type" style="--c:${typeColor(t)}">${typeZh(t)}</span>`).join('');
 }
 
+function statRowHtml(key, value, unlocked) {
+  if (!unlocked) {
+    return `<div class="stat-row locked"><span>${STAT_ZH[key]}</span><div class="bar"><i style="width:0%"></i></div><b>？？？</b></div>`;
+  }
+  return `<div class="stat-row"><span>${STAT_ZH[key]}</span><div class="bar"><i style="width:${Math.min(100, (value / 220) * 100)}%"></i></div><b>${value}</b></div>`;
+}
+
 // ---------- 培育栏 ----------
 function pensSignature() {
-  return S.pens
-    .map((p) => {
-      const a = L.monByUid(S, p.a);
-      const b = L.monByUid(S, p.b);
-      return `${p.a || '-'}:${a ? a.dexId : '-'}|${p.b || '-'}:${b ? b.dexId : '-'}`;
-    })
-    .join(';');
+  const key = (m) => (m ? `${m.uid}:${m.dexId}:${knownKey(m.dexId)}` : '-');
+  return S.pens.map((p) => `${key(L.monByUid(S, p.a))}|${key(L.monByUid(S, p.b))}`).join(';');
 }
 
 function ensurePens() {
@@ -315,7 +501,7 @@ function ensurePens() {
       const a = L.monByUid(S, pen.a);
       const b = L.monByUid(S, pen.b);
       return `<div class="pen" id="pen-${i}">
-        <div class="pen-head"><span>栏位 ${i + 1}</span><span class="tag no" id="pen-${i}-status">—</span></div>
+        <div class="pen-head"><span>栏位 ${i + 1}</span></div>
         <div class="slots">
           ${a ? monSlotHtml(a, i, 'a') : emptySlotHtml(i, 'a')}
           ${b ? monSlotHtml(b, i, 'b') : emptySlotHtml(i, 'b')}
@@ -333,10 +519,10 @@ function ensurePens() {
 function monSlotHtml(mon, pen, slot) {
   const s = sp(mon.dexId);
   return `<div class="slot filled" id="pen-${pen}-${slot}" data-act="open-mon" data-uid="${mon.uid}" title="查看详情">
-    <img src="${sprite(mon.dexId)}"${imgFallback(mon.dexId)} alt="${s.zh}" />
+    <img id="pen-${pen}-${slot}-img" src="${sprite(mon.dexId)}"${imgFallback(mon.dexId)}${spriteFilter(mon)} alt="${s.zh}" />
     <div class="nm">${s.zh}<span class="g">${L.genderZh(mon.gender)}</span></div>
     <div class="lv" id="pen-${pen}-${slot}-lv">Lv.${mon.level}</div>
-    <div class="egg-grp">${eggGroupsZh(s.eggGroups)}</div>
+    <div class="egg-grp">${L.eggGroupsDisplay(S, mon.dexId)}</div>
     <div class="types">${typeBadges(s.types)}</div>
     <div class="bar exp" style="width:100%"><i id="pen-${pen}-${slot}-exp" style="width:0%"></i></div>
   </div>`;
@@ -353,28 +539,20 @@ function patchPens() {
     patchSlot(a, i, 'a');
     patchSlot(b, i, 'b');
 
-    const compat = L.compatibility(S, a, b);
-    const card = el(`pen-${i}`);
-    if (card) card.classList.toggle('ready', compat.ok);
-
-    const status = el(`pen-${i}-status`);
-    if (status) {
-      status.className = `tag ${compat.ok ? 'ok' : 'no'}`;
-      status.textContent = compat.ok ? '可以配种' : a && b ? compat.reason : '等待宝可梦';
-    }
-
+    // 两只都在就会积累繁育条；成败要等条满才知道
+    const both = !!(a && b);
     const breed = el(`pen-${i}-breed`);
     if (breed) {
-      breed.style.display = compat.ok ? 'flex' : 'none';
-      if (compat.ok) {
-        const p = pct(pen.breed, L.CONFIG.breedDays);
+      breed.style.display = both ? 'flex' : 'none';
+      if (both) {
+        const p = pct(pen.breed, CONFIG.breedDays);
         setWidth(el(`pen-${i}-breedbar`), p);
         setText(el(`pen-${i}-breedpct`), `${p.toFixed(0)}%`);
       }
     }
   });
 
-  const maxPens = L.UPGRADE_INFO.pens.max;
+  const maxPens = UPGRADE_INFO.pens.max;
   const cost = L.upgradeCost(S, 'pens');
   $('#pen-hint').textContent = `${S.pens.length}/${maxPens} 个栏位${cost != null ? ` · 扩建 ${fmt(cost)} 资金` : ''}`;
 }
@@ -384,11 +562,30 @@ function patchSlot(mon, pen, slot) {
   const s = sp(mon.dexId);
   setText(el(`pen-${pen}-${slot}-lv`), `Lv.${mon.level}`);
   setWidth(el(`pen-${pen}-${slot}-exp`), pct(mon.exp, L.expNeeded(mon.level, s.growthRate)));
+  applyToleranceFilter(el(`pen-${pen}-${slot}-img`), mon);
+}
+
+function playPenEffect(index, kind) {
+  const pen = el(`pen-${index}`);
+  if (!pen) return;
+  pen.classList.remove('love');
+  pen.classList.remove('clash');
+  void pen.offsetWidth;
+  pen.classList.add(kind);
+  setTimeout(() => pen.classList.remove(kind), 1000);
+}
+
+function playPenLove(index) {
+  playPenEffect(index, 'love');
+}
+
+function playPenClash(index) {
+  playPenEffect(index, 'clash');
 }
 
 // ---------- 孵化器 ----------
 function eggsSignature() {
-  return S.eggs.map((e) => `${e.uid}:${e.dexId}:${e.total}`).join('|');
+  return S.eggs.map((e) => `${e.uid}:${e.dexId}:${e.total}:${knownKey(e.dexId)}`).join('|');
 }
 
 function ensureEggs() {
@@ -397,7 +594,7 @@ function ensureEggs() {
   sig.eggs = s;
   const host = $('#eggs');
   if (!S.eggs.length) {
-    host.innerHTML = `<div class="empty-tip">孵化器空闲。到市场买蛋，或让同一栏位的两只宝可梦配种（一雄一雌、蛋组有交集即可）。</div>`;
+    host.innerHTML = `<div class="empty-tip">孵化器空闲。到市场买蛋，或把两只宝可梦放进同一栏位试试繁育。</div>`;
     return;
   }
   host.innerHTML = S.eggs
@@ -408,11 +605,11 @@ function ensureEggs() {
           <div class="egg-shape"></div>
           <div>
             <div class="nm">${s2.zh}</div>
-            <div class="egg-grp">${eggGroupsZh(s2.eggGroups)}</div>
+            <div class="egg-grp">蛋组 ${L.eggGroupsDisplay(S, egg.dexId)}</div>
             <div class="sub" id="egg-${egg.uid}-left">孵化中 · ${egg.daysLeft.toFixed(1)} 天</div>
           </div>
         </div>
-        <div class="bar egg"><i id="egg-${egg.uid}-bar" style="width:0%"></i></div>
+        <div class="bar hatch"><i id="egg-${egg.uid}-bar" style="width:0%"></i></div>
       </div>`;
     })
     .join('');
@@ -428,7 +625,11 @@ function patchEggs() {
 
 // ---------- 实验室 ----------
 function labSignature() {
-  return `${S.lab.length}:` + S.lab.map((slot) => slot.uid || '-').join('|');
+  const key = (uid) => {
+    const m = L.monByUid(S, uid);
+    return m ? `${m.uid}:${m.dexId}:${knownKey(m.dexId)}` : '-';
+  };
+  return `${S.lab.length}:` + S.lab.map((slot) => key(slot.uid)).join('|');
 }
 
 function ensureLab() {
@@ -443,21 +644,23 @@ function ensureLab() {
         return `<button class="slot empty lab-empty" data-act="open-lab-picker" data-slot="${i}">＋<br />放入实验对象</button>`;
       }
       const spc = sp(mon.dexId);
+      const done = L.isResearched(S, mon.dexId);
       return `<div class="lab-card" id="lab-${i}">
         <div class="lab-head">
-          <img src="${sprite(mon.dexId)}"${imgFallback(mon.dexId)} alt="${spc.zh}" />
+          <img id="lab-${i}-img" src="${sprite(mon.dexId)}"${imgFallback(mon.dexId)}${spriteFilter(mon)} alt="${spc.zh}" />
           <div>
             <div class="nm">${spc.zh}</div>
-            <div class="lv">Lv.${mon.level} · ${eggGroupsZh(spc.eggGroups)}</div>
+            <div class="lv">Lv.${mon.level} · ${L.eggGroupsDisplay(S, mon.dexId)}</div>
           </div>
         </div>
-        <div class="lab-stat"><span>耐受度</span><b id="lab-${i}-tol">${Math.round(mon.tolerance)}</b></div>
+        <div class="lab-stat"><span>耐受度</span><b id="lab-${i}-tol">${Math.round(mon.tolerance)} / ${maxTolerance(mon)}</b></div>
         <div class="bar hap" style="width:100%"><i id="lab-${i}-tolbar" style="width:0%"></i></div>
         <div class="lab-stat"><span>图鉴研究</span><b id="lab-${i}-res">${L.researchPercent(S, mon.dexId)}%</b></div>
-        <div class="bar egg" style="width:100%"><i id="lab-${i}-resbar" style="width:0%"></i></div>
+        <div class="bar study" style="width:100%"><i id="lab-${i}-resbar" style="width:0%"></i></div>
+        ${done ? '<div class="lab-note">研究已完成 · 只剩最伤身的那种实验</div>' : ''}
         <div class="lab-actions">
           <button class="mini" data-act="open-exp" data-uid="${mon.uid}">实验</button>
-          <button class="ghost danger" data-act="release-mon" data-uid="${mon.uid}">放生</button>
+          <button class="ghost danger" data-act="release-mon" data-uid="${mon.uid}" title="放生（放归野外，不可撤销）">放生</button>
         </div>
       </div>`;
     })
@@ -471,19 +674,108 @@ function patchLab() {
   S.lab.forEach((slot, i) => {
     const mon = L.monByUid(S, slot.uid);
     if (!mon) return;
+    const max = Math.max(1, maxTolerance(mon));
     const tol = Math.max(0, Math.round(mon.tolerance));
-    setText(el(`lab-${i}-tol`), String(tol));
-    setWidth(el(`lab-${i}-tolbar`), Math.max(0, Math.min(100, tol)));
+    setText(el(`lab-${i}-tol`), `${tol} / ${max}`);
+    setWidth(el(`lab-${i}-tolbar`), Math.max(0, Math.min(100, (tol / max) * 100)));
     const pctRes = L.researchPercent(S, mon.dexId);
     setText(el(`lab-${i}-res`), `${pctRes}%`);
     setWidth(el(`lab-${i}-resbar`), pctRes);
+    applyToleranceFilter(el(`lab-${i}-img`), mon);
   });
+}
+
+function playLabHit(uid, intensity = 0.5) {
+  const idx = S.lab.findIndex((slot) => slot.uid === uid);
+  if (idx < 0) return;
+  const card = el(`lab-${idx}`);
+  if (!card) return;
+  const v = Math.max(0.15, Math.min(1, Number(intensity) || 0.5));
+  if (card.style?.setProperty) card.style.setProperty('--hit', v.toFixed(2));
+  else if (card.style) card.style['--hit'] = v.toFixed(2);
+  card.classList.remove('experiment-hit');
+  void card.offsetWidth;
+  card.classList.add('experiment-hit');
+  setTimeout(() => card.classList.remove('experiment-hit'), 1000);
+}
+
+// ---------- 围栏（不在培育栏、也不在实验室的闲置宝可梦） ----------
+function idleSignature() {
+  return L.idleMons(S)
+    .map((m) => `${m.uid}:${m.dexId}:${knownKey(m.dexId)}`)
+    .join('|');
+}
+
+function ensureIdle() {
+  const s = idleSignature();
+  if (s === sig.idle) return;
+  sig.idle = s;
+  const host = $('#idle');
+  if (!host) return;
+  const list = L.idleMons(S);
+  const conflictKeys = new Set(L.idleConflicts(S).map((c) => `${c.dexId}:${c.gender}`));
+  if (!list.length) {
+    host.innerHTML = `<div class="empty-tip">围栏是空的——所有宝可梦都在培育栏或实验室里。</div>`;
+    return;
+  }
+  host.innerHTML = list
+    .map((m) => {
+      const spc = sp(m.dexId);
+      const fighting = conflictKeys.has(`${m.dexId}:${m.gender}`);
+      return `<div class="idle-mon${fighting ? ' fighting' : ''}" id="idle-${m.uid}" data-act="open-mon" data-uid="${m.uid}" title="查看详情">
+        <img id="idle-${m.uid}-img" src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="${spc.zh}" />
+        <div class="n">${spc.zh}<span class="g">${L.genderZh(m.gender)}</span></div>
+        <div class="lv" id="idle-${m.uid}-lv">Lv.${m.level}</div>
+        <div class="egg-grp">${L.eggGroupsDisplay(S, m.dexId)}</div>
+      </div>`;
+    })
+    .join('');
+}
+
+function patchIdle() {
+  const list = L.idleMons(S);
+  const conflicts = L.idleConflicts(S);
+  const hint = $('#idle-hint');
+  if (hint) hint.textContent = `${list.length} 只闲置${conflicts.length ? ` · ${conflicts.length} 组争斗` : ' · 不参与繁育与研究'}`;
+  const conflictKeys = new Set(conflicts.map((c) => `${c.dexId}:${c.gender}`));
+  for (const m of list) {
+    setText(el(`idle-${m.uid}-lv`), `Lv.${m.level}`);
+    applyToleranceFilter(el(`idle-${m.uid}-img`), m);
+    const card = el(`idle-${m.uid}`);
+    if (card) card.classList.toggle('fighting', conflictKeys.has(`${m.dexId}:${m.gender}`));
+  }
+
+  // 同物种同性别扎堆会持续掉耐受度，这里明确提醒
+  const alert = el('idle-alert');
+  if (alert) {
+    const shown = conflicts
+      .slice(0, 4)
+      .map((c) => `${sp(c.dexId).zh}${L.genderZh(c.gender)}×${c.count}`)
+      .join('、');
+    const more = conflicts.length > 4 ? ` 等 ${conflicts.length} 组` : '';
+    const text = conflicts.length
+      ? `⚠️ 同种同性的个体挤在围栏里正在互相争斗，耐受度持续下降：${shown}${more}（分开它们即可停止）`
+      : '';
+    setText(alert, text);
+    alert.classList.toggle('hidden', !text);
+  }
+
+  // 底栏“围栏”红点：正在争斗的个体数
+  const badge = el('badge-idle');
+  if (badge) {
+    const fighting = conflicts.reduce((sum, c) => sum + c.count, 0);
+    badge.textContent = String(fighting);
+    badge.classList.toggle('hidden', fighting === 0);
+  }
 }
 
 // ---------- 订单 ----------
 function ordersSignature() {
   return S.orders
-    .map((o) => `${o.id}:${o.dept}:${o.kind}:${o.dexId}:${o.type}:${o.minLevel}:${o.needNature}:${o.reward}`)
+    .map(
+      (o) =>
+        `${o.id}:${o.dept}:${o.kind}:${o.dexId}:${o.type}:${o.minLevel}:${o.needNature}:${o.reward}:${o.repGain ?? 4}:${o.repLoss ?? 2}`
+    )
     .join('|');
 }
 
@@ -500,13 +792,17 @@ function ensureOrders() {
     .map((o) => {
       const kindLabel = o.kind === 'any' ? '任意' : o.kind === 'type' ? typeZh(o.type) : '指定';
       const kindClass = o.kind === 'species' ? 'species' : o.kind === 'type' ? 'type' : '';
-      return `<div class="order" id="order-${o.id}">
+      const isBoard = o.dept === 'board';
+      return `<div class="order ${isBoard ? 'board' : ''}" id="order-${o.id}">
+        ${isBoard ? '<div class="board-banner"><span class="board-crown">♛</span><span>总裁办直令</span><span class="board-important">重要</span></div>' : ''}
         <div class="order-top">
-          <span class="dept">${L.deptName(o.dept)}</span>
+          <span class="dept ${isBoard ? 'board' : ''}">${L.deptName(o.dept)}</span>
           <span class="kind ${kindClass}">${kindLabel}</span>
           <span class="reward">🪙 ${fmt(o.reward)}</span>
         </div>
-        <div class="req">${L.orderRequirementText(o)}</div>
+        <div class="req">${L.orderRequirementText(o)}
+          <span class="rep-delta">声望 +${o.repGain ?? 4}</span>
+        </div>
         <div class="order-foot">
           <span id="order-${o.id}-left">剩余 ${Math.max(0, o.deadline - S.day).toFixed(1)} 天</span>
           <div class="bar"><i id="order-${o.id}-bar" style="width:0%"></i></div>
@@ -522,6 +818,15 @@ function ensureOrders() {
 
 function patchOrders() {
   $('#order-hint').textContent = `${S.orders.length}/${L.orderSlots(S)} 单 · 声望加成 +${Math.round(S.rep)}%`;
+  const decay = L.repDecay(S);
+  const decayNode = el('rep-decay');
+  if (decayNode) {
+    const show = decay.active && S.rep > 0 && !S.quit;
+    decayNode.classList.toggle('hidden', !show);
+    if (show) {
+      decayNode.textContent = `⏳ 已 ${decay.idleDays.toFixed(1)} 天没有完成部门需求，声望正在流失 -${decay.rate.toFixed(1)}/天`;
+    }
+  }
   for (const o of S.orders) {
     const total = Math.max(0.1, o.deadline - o.created);
     const left = Math.max(0, o.deadline - S.day);
@@ -538,11 +843,19 @@ function patchOrders() {
       btn.textContent = n ? `交付 (${n})` : '无匹配';
     }
   }
+
+  // 底栏“经营”红点：有多少单现在就能交
+  const badge = el('badge-market');
+  if (badge) {
+    const ready = L.deliverableOrders(S).length;
+    badge.textContent = String(ready);
+    badge.classList.toggle('hidden', ready === 0);
+  }
 }
 
 // ---------- 市场 ----------
 function shopSignature() {
-  return S.market.map((o) => `${o.dexId}:${o.price}`).join('|');
+  return S.market.map((o) => `${o.dexId}:${o.price}:${o.source || ''}:${knownKey(o.dexId)}`).join('|');
 }
 
 function ensureShop() {
@@ -557,7 +870,8 @@ function ensureShop() {
         <img src="${sprite(offer.dexId)}"${imgFallback(offer.dexId)} alt="${mon.zh}" />
         <div>
           <div class="m-nm">${mon.zh} 的蛋</div>
-          <div class="m-sub">${mon.types.map(typeZh).join('/')} · 孵化 ${L.hatchDays(S, offer.dexId).toFixed(1)} 天</div>
+          <div class="m-sub">蛋组 ${L.eggGroupsDisplay(S, offer.dexId)}</div>
+          <div class="m-sub">来源：${offer.source || '来路不明'}</div>
         </div>
         <button id="buy-egg-${idx}" data-act="buy-egg" data-idx="${idx}">🪙 ${fmt(offer.price)}</button>
       </div>`;
@@ -566,75 +880,96 @@ function ensureShop() {
 
   const itemsHtml = [...STONE_ITEMS, 'trade-cable']
     .map((item) => {
-      const price = L.ITEM_PRICES[item];
-      return `<span class="item-chip">${ITEM_ZH[item]} <b id="inv-${item}">×0</b>
-        <button id="buy-item-${item}" data-act="buy-item" data-item="${item}">${fmt(price)}</button>
+      const price = ITEM_PRICES[item];
+      return `<span class="item-chip">
+        ${itemIcon(item, 18)}
+        <span class="i-name">${ITEM_ZH[item]}</span>
+        <b id="inv-${item}">×0</b>
+        <button id="buy-item-${item}" data-act="buy-item" data-item="${item}">🪙 ${fmt(price)}</button>
       </span>`;
     })
     .join('');
 
   host.innerHTML = `
     <div class="shop-row">
-      <span class="lab">🍒 树果单价</span>
-      <span class="val" id="berry-price" style="color:var(--green)">—</span>
+      <span class="lab">🍬 经验糖果</span>
+      <span class="val" id="candy-price" style="color:var(--green)">—</span>
+      <span class="store" id="candy-stock">持有 0</span>
       <span style="margin-left:auto"></span>
-      <button id="buy-berry-1" data-act="buy-berries" data-qty="1">买 1</button>
-      <button id="buy-berry-5" data-act="buy-berries" data-qty="5">买 5</button>
+      <button id="buy-candy-1" data-act="buy-candy" data-qty="1">买 1</button>
+      <button id="buy-candy-5" data-act="buy-candy" data-qty="5">买 5</button>
     </div>
-    <div class="section-title" style="margin:2px 0 4px">蛋市场</div>
-    <div class="market-list">${marketHtml || '<div class="empty-tip">今天的蛋卖完了，明天再来。</div>'}</div>
+    <div class="section-title" style="margin:2px 0 4px">蛋贩子</div>
+    <div class="market-list">${marketHtml || '<div class="empty-tip">蛋贩子手上暂时没货了，花钱让他再跑一趟。</div>'}</div>
+    <div class="market-reroll">
+      <span class="hint">货不新鲜了？让蛋贩子再拿一批。</span>
+      <button id="reroll-market" data-act="reroll-market">换一批 🪙 ${fmt(CONFIG.marketRefreshCost)}</button>
+    </div>
     <div class="section-title" style="margin:10px 0 4px">进化道具</div>
     <div class="items">${itemsHtml}</div>`;
 }
 
 function patchShop() {
-  setText(el('berry-price'), `${S.berryPrice.toFixed(1)} 资金`);
-  const b1 = el('buy-berry-1');
-  const b5 = el('buy-berry-5');
-  if (b1) b1.disabled = S.gold < S.berryPrice;
-  if (b5) b5.disabled = S.gold < S.berryPrice * 5;
+  setText(el('candy-price'), `${S.candyPrice.toFixed(1)} 资金`);
+  setText(el('candy-stock'), `持有 ${S.candies}`);
+  const b1 = el('buy-candy-1');
+  const b5 = el('buy-candy-5');
+  if (b1) b1.disabled = S.gold < S.candyPrice;
+  if (b5) b5.disabled = S.gold < S.candyPrice * 5;
   S.market.forEach((offer, idx) => {
     const btn = el(`buy-egg-${idx}`);
     if (btn) btn.disabled = S.gold < offer.price;
   });
+  const reroll = el('reroll-market');
+  if (reroll) reroll.disabled = S.gold < CONFIG.marketRefreshCost;
   for (const item of [...STONE_ITEMS, 'trade-cable']) {
     setText(el(`inv-${item}`), `×${S.inventory[item] || 0}`);
     const btn = el(`buy-item-${item}`);
-    if (btn) btn.disabled = S.gold < L.ITEM_PRICES[item];
+    if (btn) btn.disabled = S.gold < ITEM_PRICES[item];
   }
-  $('#market-hint').textContent = `树果 ${S.berryPrice.toFixed(1)} 资金`;
+  $('#market-hint').textContent = `经验糖果 ${S.candyPrice.toFixed(1)} 资金`;
 }
 
 // ---------- 设施 ----------
 function upgradesSignature() {
-  return `${S.pens.length}:${S.upgrades.incubator}:${S.upgrades.feeder}:${S.upgrades.advertising}:${S.upgrades.training}`;
+  return [
+    S.pens.length,
+    S.lab.length,
+    S.rank ?? 0,
+    S.upgrades.incubator,
+    S.upgrades.feeder,
+    S.upgrades.advertising,
+    S.upgrades.training,
+  ].join(':');
 }
 
 function ensureUpgrades() {
   const s = upgradesSignature();
   if (s === sig.upgrades) return;
   sig.upgrades = s;
-  $('#upgrades').innerHTML = Object.entries(L.UPGRADE_INFO)
+  $('#upgrades').innerHTML = Object.entries(UPGRADE_INFO)
     .map(([key, info]) => {
-      const lvl = key === 'pens' ? S.pens.length : S.upgrades[key];
+      const lvl = key === 'pens' ? S.pens.length : key === 'lab' ? S.lab.length : S.upgrades[key];
       const cost = L.upgradeCost(S, key);
       const maxed = cost == null;
-      return `<div class="upgrade">
+      const needRank = L.upgradeRankReq(S, key);
+      const rankLocked = (S.rank ?? 0) < needRank;
+      const label = maxed ? '已满级' : rankLocked ? `需 ${rankById(needRank).name}` : `升级 🪙 ${fmt(cost)}`;
+      return `<div class="upgrade ${rankLocked ? 'locked' : ''}">
         <div class="u-name">${info.name}<small>Lv.${lvl}/${info.max}</small></div>
-        <button id="upg-${key}" data-act="upgrade" data-key="${key}" ${maxed ? 'disabled' : ''}>
-          ${maxed ? '已满级' : `升级 🪙 ${fmt(cost)}`}
-        </button>
-        <div class="u-desc">${info.desc}</div>
+        <button id="upg-${key}" data-act="upgrade" data-key="${key}" ${maxed || rankLocked ? 'disabled' : ''}>${label}</button>
+        <div class="u-desc">${info.desc}${rankLocked ? ` · 需职级 ${rankById(needRank).name}` : ''}</div>
       </div>`;
     })
     .join('');
 }
 
 function patchUpgrades() {
-  for (const key of Object.keys(L.UPGRADE_INFO)) {
+  for (const key of Object.keys(UPGRADE_INFO)) {
     const btn = el(`upg-${key}`);
     const cost = L.upgradeCost(S, key);
-    if (btn) btn.disabled = cost == null || S.gold < cost;
+    const rankLocked = (S.rank ?? 0) < L.upgradeRankReq(S, key);
+    if (btn) btn.disabled = cost == null || rankLocked || S.gold < cost;
   }
 }
 
@@ -662,6 +997,7 @@ function openModal(type, data = {}) {
 function closeModal() {
   modal = null;
   const root = $('#modal');
+  if (!root) return;
   root.classList.add('hidden');
   root.setAttribute('aria-hidden', 'true');
   root.innerHTML = '';
@@ -678,16 +1014,18 @@ function renderModal() {
   const root = $('#modal');
   if (!root || !modal) return;
   if (modal.type === 'mon') root.innerHTML = monModalHtml(modal.uid);
+  else if (modal.type === 'species') root.innerHTML = speciesModalHtml(modal.id);
+  else if (modal.type === 'breedlog') root.innerHTML = breedLogModalHtml();
   else if (modal.type === 'picker') root.innerHTML = pickerModalHtml(modal.pen, modal.slot);
   else if (modal.type === 'deliver') root.innerHTML = deliverModalHtml(modal.orderId);
   else if (modal.type === 'labexp') root.innerHTML = labExpModalHtml(modal.uid);
   else if (modal.type === 'labpicker') root.innerHTML = labPickerModalHtml(modal.slot);
-  else if (modal.type === 'labconfirm') root.innerHTML = labConfirmModalHtml(modal.slot, modal.uid);
-  else if (modal.type === 'release') root.innerHTML = releaseModalHtml(modal.uid);
-  else if (modal.type === 'dex') root.innerHTML = dexModalHtml();
+  else if (modal.type === 'ranks') root.innerHTML = ranksModalHtml();
+  else if (modal.type === 'menu') root.innerHTML = menuModalHtml();
   else if (modal.type === 'help') root.innerHTML = helpModalHtml();
   else if (modal.type === 'win') root.innerHTML = winModalHtml();
-  else if (modal.type === 'reset') root.innerHTML = resetModalHtml();
+  else if (modal.type === 'quit') root.innerHTML = quitModalHtml();
+  else if (modal.type === 'quitdone') root.innerHTML = quitDoneModalHtml();
 }
 
 function monModalHtml(uid) {
@@ -697,19 +1035,9 @@ function monModalHtml(uid) {
   const nat = natureById(mon.nature);
   const need = L.expNeeded(mon.level, s.growthRate);
   const st = calcStats(mon);
+  const revealed = new Set(L.revealedStats(S, mon.dexId));
   const statRows = Object.keys(STAT_ZH)
-    .map((k) => `<div class="stat-row"><span>${STAT_ZH[k]}</span><div class="bar"><i style="width:${Math.min(100, (st[k] / 220) * 100)}%"></i></div><b>${st[k]}</b></div>`)
-    .join('');
-  const ivCells = Object.keys(STAT_ZH)
-    .map((k) => {
-      const iv = mon.ivs[k];
-      const cls = iv >= 24 ? 'good' : iv <= 8 ? 'poor' : '';
-      return `<div class="iv-cell ${cls}">
-        <div class="iv-lab">${STAT_ZH[k]}</div>
-        <div class="iv-bar"><i style="height:${Math.max(6, (iv / 31) * 100)}%"></i></div>
-        <div class="iv-val">${iv}</div>
-      </div>`;
-    })
+    .map((k) => statRowHtml(k, st[k], revealed.has(k)))
     .join('');
   const plans = L.evoPlanFor(S, mon);
   const evoHtml = plans.length
@@ -720,11 +1048,11 @@ function monModalHtml(uid) {
             p.kind === 'level'
               ? `等级 ${p.minLevel}`
               : p.kind === 'item'
-              ? `${ITEM_ZH[p.item] || p.item}（库存 ${S.inventory[p.item] || 0}）`
-              : `通信电缆（库存 ${S.inventory['trade-cable'] || 0}）`;
+              ? `${itemIcon(p.item, 13)} ${ITEM_ZH[p.item] || p.item}（库存 ${S.inventory[p.item] || 0}）`
+              : `${itemIcon('trade-cable', 13)} 通信电缆（库存 ${S.inventory['trade-cable'] || 0}）`;
           return `<div class="kv" style="align-items:center">
             <span class="k">→ ${target.zh}</span>
-            <span class="v" style="font-weight:500;color:var(--muted)">${cond}</span>
+            <span class="v" style="font-weight:500;color:var(--muted);display:flex;align-items:center;gap:4px">${cond}</span>
             ${p.kind === 'level'
               ? `<span class="tag ${p.ready ? 'ok' : 'no'}" style="margin-left:auto">${p.ready ? '已满足' : `还差 ${Math.max(0, p.minLevel - mon.level)} 级`}</span>`
               : `<button class="mini" style="margin-left:auto" data-act="evolve" data-uid="${mon.uid}" data-to="${p.toId}" ${p.ready ? '' : 'disabled'}>进化</button>`}
@@ -735,40 +1063,44 @@ function monModalHtml(uid) {
 
   const inPen = L.penIndex(S, mon.uid);
   const inLab = L.labContains(S, mon.uid);
-  let penButtons = '';
-  if (inLab) {
-    penButtons = '';
-  } else if (inPen >= 0) {
-    penButtons = `<button class="ghost" data-act="unassign" data-uid="${mon.uid}">移出栏位 ${inPen + 1}</button>`;
-  } else {
-    const slots = [];
-    S.pens.forEach((p, i) => {
-      if (!p.a) slots.push(`<button class="ghost" data-act="assign" data-pen="${i}" data-slot="a" data-uid="${mon.uid}">放入栏位 ${i + 1}</button>`);
-      else if (!p.b) slots.push(`<button class="ghost" data-act="assign" data-pen="${i}" data-slot="b" data-uid="${mon.uid}">放入栏位 ${i + 1}</button>`);
-    });
-    penButtons = slots.slice(0, 3).join('');
-  }
+  // 围栏里的个体不再给“放入栏位”快捷按钮：统一从培育栏空位的「放入宝可梦」进入
+  const penButtons =
+    !inLab && inPen >= 0
+      ? `<button class="ghost" data-act="unassign" data-uid="${mon.uid}">移出栏位 ${inPen + 1}</button>`
+      : '';
+  const idleHint =
+    !inLab && inPen < 0
+      ? '<div class="hint-line">要放进培育栏：点培育栏空位的「放入宝可梦」。</div>'
+      : '';
 
+  // 耐受度只在进实验室后才展示
+  const tolMax = Math.max(1, maxTolerance(mon));
+  const tolNow = Math.max(0, Math.round(mon.tolerance));
   const labMeta = inLab
-    ? `<div class="kv"><span class="k">耐受度</span><span class="v">${Math.max(0, Math.round(mon.tolerance))} / ${L.CONFIG.toleranceBase}</span></div>
-       <div class="bar hap" style="max-width:230px"><i style="width:${Math.max(0, Math.min(100, mon.tolerance))}%"></i></div>
+    ? `<div class="kv"><span class="k">耐受度</span><span class="v">${tolNow} / ${tolMax}</span></div>
+       <div class="bar hap" style="max-width:230px"><i style="width:${Math.max(0, Math.min(100, (tolNow / tolMax) * 100))}%"></i></div>
        <div class="kv"><span class="k">图鉴研究</span><span class="v">${L.researchPercent(S, mon.dexId)}%</span></div>
-       <div class="bar egg" style="max-width:230px"><i style="width:${L.researchPercent(S, mon.dexId)}%"></i></div>
+       <div class="bar study" style="max-width:230px"><i style="width:${L.researchPercent(S, mon.dexId)}%"></i></div>
        <div class="kv"><span class="k">状态</span><span class="v" style="color:#ffb3ba">实验中（无法取出）</span></div>`
     : '';
 
   const actionButtons = inLab
     ? `<button data-act="open-exp" data-uid="${mon.uid}">进行实验</button>
-       <button class="ghost danger" data-act="release-mon" data-uid="${mon.uid}">放生</button>`
-    : `<button data-act="feed" data-uid="${mon.uid}" ${S.berries <= 0 ? 'disabled' : ''}>喂树果（余 ${S.berries}）</button>
+       <button class="ghost danger" data-act="release-mon" data-uid="${mon.uid}" title="放生（放归野外，不可撤销）">放生</button>`
+    : `<button data-act="feed" data-uid="${mon.uid}" ${S.candies <= 0 ? 'disabled' : ''}>喂经验糖果（余 ${S.candies}）</button>
        ${penButtons}
        <button class="ghost danger" data-act="sell" data-uid="${mon.uid}">出售 🪙 ${fmt(L.sellPrice(mon))}</button>`;
+
+  const statNote =
+    revealed.size < 6
+      ? `<div class="hint-line">能力值随该物种的研究进度逐项披露，顺序按种族值从高到低。</div>`
+      : '';
 
   return modalShell(
     s.zh,
     `
     <div class="detail">
-      <div class="detail-art"><img src="${art(mon.dexId)}"${imgFallback(mon.dexId)} alt="${s.zh}" /></div>
+      <div class="detail-art"><img src="${art(mon.dexId)}"${imgFallback(mon.dexId)}${spriteFilter(mon)} alt="${s.zh}" /></div>
       <div class="detail-meta">
         <div class="kv"><span class="k">属性</span><span class="v">${typeBadges(s.types)}</span></div>
         <div class="kv"><span class="k">分类</span><span class="v">${s.genus || '—'}</span></div>
@@ -776,46 +1108,109 @@ function monModalHtml(uid) {
         <div class="bar exp" style="max-width:230px"><i style="width:${pct(mon.exp, need)}%"></i></div>
         <div class="kv"><span class="k">性别</span><span class="v">${L.genderZh(mon.gender)}　性格 ${nat.zh}</span></div>
         <div class="kv"><span class="k">特性</span><span class="v">${mon.ability}</span></div>
-        <div class="kv"><span class="k">蛋组</span><span class="v">${eggGroupsZh(s.eggGroups)}</span></div>
-        <div class="kv"><span class="k">个体值</span><span class="v">${ivTotal(mon)} / 186</span></div>
+        <div class="kv"><span class="k">蛋组</span><span class="v">${L.eggGroupsDisplay(S, mon.dexId)}</span></div>
         ${labMeta}
       </div>
     </div>
 
-    <div class="section-title">能力值（含个体值与性格修正）</div>
+    <div class="section-title">能力值（已披露 ${revealed.size}/6）</div>
     <div class="stats-grid">${statRows}</div>
-
-    <div class="section-title">个体值明细（0-31）</div>
-    <div class="iv-row">${ivCells}</div>
+    ${statNote}
 
     <div class="section-title">进化路线</div>
     ${evoHtml}
 
     <div class="actions">
       ${actionButtons}
-    </div>`,
+    </div>
+    ${idleHint}`,
     `<span class="hint" style="font-size:11px;color:var(--muted)">${s.zh} #${String(mon.dexId).padStart(3, '0')}</span>`
   );
 }
 
+// 图鉴物种详情：图鉴描述只在研究完成后揭晓（描述是研究产出的“条目”）
+function speciesModalHtml(dexId) {
+  const s = sp(dexId);
+  if (!s) return modalShell('未知物种', '<div class="empty-tip">没有这个物种的数据。</div>');
+  const known = L.researchProgress(S, dexId) > 0;
+  const done = L.isResearched(S, dexId);
+  const percent = L.researchPercent(S, dexId);
+  const rec = L.dexRecord(S, dexId);
+  const lost = rec?.lost ?? L.researchLostCount(S, dexId);
+  const flavor = typeof s.flavor === 'string' ? s.flavor.trim() : '';
+  const name = known ? esc(s.zh) : '???';
+  const revealed = new Set(L.revealedStats(S, dexId));
+  const statRows = Object.keys(STAT_ZH)
+    .map((k) => statRowHtml(k, s.stats?.[k] ?? 0, revealed.has(k)))
+    .join('');
+  return modalShell(
+    `${name} <span style="color:var(--muted);font-size:12px">#${String(dexId).padStart(3, '0')}</span>`,
+    `<div class="species-card">
+      <div class="species-art ${done ? '' : 'gray'}"><img src="${art(dexId)}"${imgFallback(dexId)} alt="" /></div>
+      <div class="species-meta">
+        <div class="kv"><span class="k">分类</span><span class="v">${known ? esc(s.genus || '—') : '???'}</span></div>
+        <div class="kv"><span class="k">属性</span><span class="v">${known ? typeBadges(s.types) : '???'}</span></div>
+        <div class="kv"><span class="k">研究进度</span><span class="v">${done ? '完成' : `${percent}%`}</span></div>
+        <div class="bar study" style="max-width:230px"><i style="width:${done ? 100 : percent}%"></i></div>
+        <div class="kv"><span class="k">研究损耗</span><span class="v">${lost} 只</span></div>
+        ${done && rec ? `<div class="kv"><span class="k">完成于</span><span class="v">第 ${rec.day} 天</span></div>` : ''}
+      </div>
+    </div>
+    <div class="kv" style="margin-top:6px"><span class="k">蛋组</span><span class="v">${L.eggGroupsDisplay(S, dexId)}</span></div>
+    <div class="section-title">种族值（已披露 ${revealed.size}/6）</div>
+    <div class="stats-grid">${statRows}</div>
+    <div class="section-title">图鉴描述</div>
+    ${
+      done
+        ? `<p class="flavor">${esc(flavor || '（这条图鉴还没有留下描述。）')}</p>`
+        : `<p class="flavor locked">完成「${name}」的图鉴研究后，这里会补上你写下的描述。</p>`
+    }
+    ${
+      done && rec
+        ? `<div class="kv" style="margin-top:10px"><span class="k">研究行为</span><span class="v">${L.dexRecordText(rec)} · 损耗 ${lost} 只</span></div>`
+        : ''
+    }`,
+    `<span class="hint" style="font-size:11px;color:var(--muted)">图鉴 #${String(dexId).padStart(3, '0')}</span>`
+  );
+}
+
+function breedLogModalHtml() {
+  const rows = (S.breedFails || [])
+    .map((r) => {
+      const a = sp(r.a.dexId);
+      const b = sp(r.b.dexId);
+      const loser = sp(r.loser.dexId);
+      const kind = r.kind === 'exhausted' ? '力竭' : '争斗';
+      const result = r.kind === 'exhausted' ? '力竭而亡' : '伤重不治';
+      return `<div class="breed-fail-row">
+        <span class="d">D${r.day}</span>
+        <span class="pair"><b>${a?.zh || r.a.dexId}</b> Lv.${r.a.level} × <b>${b?.zh || r.b.dexId}</b> Lv.${r.b.level}</span>
+        <span class="out">${kind} · ${loser?.zh || r.loser.dexId} ${result}</span>
+      </div>`;
+    })
+    .join('');
+  return modalShell(
+    '配对失败记录',
+    `<p class="hint" style="font-size:11px;color:var(--muted);margin-bottom:8px">只保留最近 50 条；失败的个体可能已经不在基地。</p>
+     <div class="breed-log">${rows || '<div class="empty-tip">还没有配对失败的记录。</div>'}</div>`
+  );
+}
+
 function pickerModalHtml(penIdx, slot) {
-  const pen = S.pens[penIdx];
   const body = S.mons
-    .filter((m) => !L.labContains(S, m.uid))
+    .filter((m) => !L.labContains(S, m.uid) && L.penIndex(S, m.uid) === -1)
     .map((m) => {
       const s = sp(m.dexId);
-      const where = L.penIndex(S, m.uid);
-      const here = pen && (pen.a === m.uid || pen.b === m.uid);
-      return `<button class="pick" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}" ${here ? 'disabled' : ''}>
-        <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)} alt="" />
+      return `<button class="pick" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}">
+        <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="" />
         <span class="pn">${s.zh} ${L.genderZh(m.gender)}</span>
-        <span class="ps">Lv.${m.level} · ${eggGroupsZh(s.eggGroups)}${where >= 0 ? ` · 栏位${where + 1}` : ' · 空闲'}</span>
+        <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)} · 空闲</span>
       </button>`;
     })
     .join('');
   return modalShell(
     `选择宝可梦 → 栏位 ${penIdx + 1}`,
-    `<div class="picker-list">${body || '<div class="empty-tip">还没有宝可梦，先去市场买蛋吧。</div>'}</div>`
+    `<div class="picker-list">${body || '<div class="empty-tip">没有空闲的宝可梦；实验室里的和已在其他栏位的都不能放入。</div>'}</div>`
   );
 }
 
@@ -827,37 +1222,71 @@ function deliverModalHtml(orderId) {
     .map((m) => {
       const s = sp(m.dexId);
       return `<button class="pick" data-act="deliver" data-order="${order.id}" data-uid="${m.uid}">
-        <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)} alt="" />
+        <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="" />
         <span class="pn">${s.zh} ${L.genderZh(m.gender)}</span>
-        <span class="ps">Lv.${m.level} · ${typeZh(s.types[0])} · ${eggGroupsZh(s.eggGroups)}</span>
+        <span class="ps">Lv.${m.level} · ${typeZh(s.types[0])} · ${L.eggGroupsDisplay(S, m.dexId)}</span>
       </button>`;
     })
     .join('');
   return modalShell(
     '选择交付的宝可梦',
-    `<div class="req" style="margin-bottom:10px">${L.orderRequirementText(order)} <span style="margin-left:auto;color:var(--gold)">🪙 ${fmt(order.reward)}</span></div>
+    `<div class="req" style="margin-bottom:10px">${L.orderRequirementText(order)}
+       <span style="margin-left:auto;display:flex;align-items:center;gap:10px">
+         <span style="color:var(--violet)">声望 +${order.repGain ?? 4}</span>
+         <span style="color:var(--gold)">🪙 ${fmt(order.reward)}</span>
+       </span>
+     </div>
      <div class="picker-list">${body || '<div class="empty-tip">目前没有满足条件的宝可梦。</div>'}</div>`
   );
 }
 
 function labExpModalHtml(uid) {
   const mon = L.monByUid(S, uid);
-  if (!mon) return modalShell('找不到宝可梦', '<p>它可能已经被放生了。</p>');
+  if (!mon) return modalShell('找不到宝可梦', '<p>它可能已经不在了。</p>');
   const s = sp(mon.dexId);
-  const rows = L.EXPERIMENTS.map(
-    (e) => `<div class="exp-row">
-      <div class="exp-info"><b>${e.name}</b><small>${e.desc}</small></div>
-      <div class="exp-cost">${e.cost ? `🪙 ${fmt(e.cost)}` : '免费'}</div>
-      <button data-act="run-exp" data-uid="${mon.uid}" data-exp="${e.id}" ${S.gold < e.cost ? 'disabled' : ''}>执行</button>
-    </div>`
-  ).join('');
-  return modalShell(
-    `对 ${s.zh} 进行实验`,
-    `<p class="hint" style="font-size:12px;color:var(--muted);margin-bottom:12px">
-       实验的具体影响不会事先显示。耐受度归零，或不足以承受下一次实验时，实验对象会被放生。
-     </p>
-     <div class="exp-list">${rows}</div>`
-  );
+  const options = L.experimentOptions(S, mon);
+  const locked = options.some((e) => e.locked);
+  const rows = options
+    .map((e) => {
+      const cd = L.experimentCooldownFor(S, mon, e.id);
+      const disabled = e.locked || S.gold < e.cost || cd > 0;
+      const label = e.locked ? '不可用' : cd > 0 ? '冷却中' : '执行';
+      const cls = [e.locked ? 'locked' : '', cd > 0 ? 'cooling' : ''].filter(Boolean).join(' ');
+      return `<div class="exp-row ${cls}" id="exp-row-${e.id}">
+        <div class="exp-info"><b>${e.name}</b><small>${e.desc}</small></div>
+        <div class="exp-cost">
+          <span>${e.cost ? `🪙 ${fmt(e.cost)}` : '免费'}</span>
+          <span class="exp-cd" id="exp-cd-${e.id}">${cd > 0 ? `冷却 ${Math.ceil(cd)} 秒` : ''}</span>
+        </div>
+        <button id="exp-run-${e.id}" data-act="run-exp" data-uid="${mon.uid}" data-exp="${e.id}" ${disabled ? 'disabled' : ''}>${label}</button>
+      </div>`;
+    })
+    .join('');
+  const note = locked
+    ? `<p class="hint" style="font-size:12px;color:#ffb3ba;margin-bottom:10px">该物种的图鉴研究已经完成。现在只有最伤身的那一种实验还能记录到新数据，其余行为不再可用；<b>也不再受冷却限制</b>。</p>`
+    : `<p class="hint" style="font-size:12px;color:var(--muted);margin-bottom:12px">
+        实验的具体影响不会事先显示。耐受度归零，或不足以承受下一次实验时，实验对象会消亡。每种实验都有冷却，越深入冷却越久。
+      </p>`;
+  return modalShell(`对 ${s.zh} 进行实验`, `${note}<div class="exp-list">${rows}</div>`);
+}
+
+// 实验弹窗里的冷却倒计时只做局部更新，不重建整个弹窗（避免按钮 hover 被打断）
+function patchLabExpModal() {
+  if (!modal || modal.type !== 'labexp' || !S) return;
+  const mon = L.monByUid(S, modal.uid);
+  if (!mon) return;
+  for (const e of L.experimentOptions(S, mon)) {
+    const cd = L.experimentCooldownFor(S, mon, e.id);
+    const cdNode = el(`exp-cd-${e.id}`);
+    if (cdNode) setText(cdNode, cd > 0 ? `冷却 ${Math.ceil(cd)} 秒` : '');
+    const btn = el(`exp-run-${e.id}`);
+    if (btn) {
+      btn.disabled = e.locked || S.gold < e.cost || cd > 0;
+      setText(btn, e.locked ? '不可用' : cd > 0 ? '冷却中' : '执行');
+    }
+    const row = el(`exp-row-${e.id}`);
+    if (row) row.classList.toggle('cooling', cd > 0);
+  }
 }
 
 function labPickerModalHtml(slot) {
@@ -865,61 +1294,144 @@ function labPickerModalHtml(slot) {
     .filter((m) => !L.labContains(S, m.uid) && L.penIndex(S, m.uid) === -1)
     .map((m) => {
       const s = sp(m.dexId);
-      return `<button class="pick" data-act="lab-confirm" data-slot="${slot}" data-uid="${m.uid}">
-        <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)} alt="" />
+      return `<button class="pick" data-act="assign-lab" data-slot="${slot}" data-uid="${m.uid}">
+        <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="" />
         <span class="pn">${s.zh} ${L.genderZh(m.gender)}</span>
-        <span class="ps">Lv.${m.level} · ${eggGroupsZh(s.eggGroups)}</span>
+        <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)}</span>
       </button>`;
     })
     .join('');
   return modalShell(
     `选择实验对象 → 实验台 ${slot + 1}`,
-    `<div class="picker-list">${body || '<div class="empty-tip">没有空闲的宝可梦；培育栏里的需要先移出。</div>'}</div>`
+    `<p class="hint" style="font-size:12px;color:#ffb3ba;margin-bottom:10px">选中即送入实验室。进去后就取不出来了，只能实验或放生。</p>
+     <div class="picker-list">${body || '<div class="empty-tip">没有空闲的宝可梦；培育栏里的需要先移出。</div>'}</div>`
   );
 }
 
-function labConfirmModalHtml(slot, uid) {
-  const mon = L.monByUid(S, uid);
-  if (!mon) return modalShell('找不到宝可梦', '<p>它可能已经不在了。</p>');
-  const s = sp(mon.dexId);
-  return modalShell(
-    '确认送入实验室？',
-    `<p><b>${s.zh}</b> 一旦进入实验室就<b>无法取出</b>，只能反复实验，直到耐受度耗尽被放生。</p>
-     <p style="color:var(--muted);font-size:12px;margin-top:8px">耐受度：${Math.round(mon.tolerance)} / ${L.CONFIG.toleranceBase}</p>
-     <div class="actions">
-       <button data-act="assign-lab" data-slot="${slot}" data-uid="${uid}" style="border-color:rgba(255,107,122,.5)">确认放入</button>
-       <button class="ghost" data-act="close">取消</button>
-     </div>`
-  );
-}
-
-function releaseModalHtml(uid) {
-  const mon = L.monByUid(S, uid);
-  if (!mon) return modalShell('找不到宝可梦', '<p>它可能已经被放生了。</p>');
-  return modalShell(
-    '确认放生？',
-    `<p><b>${sp(mon.dexId).zh}</b> 将被放生，之后无法找回；已有的研究进度会保留。</p>
-     <div class="actions">
-       <button data-act="confirm-release" data-uid="${uid}" style="border-color:rgba(255,107,122,.5);color:#ffb3ba">确认放生</button>
-       <button class="ghost" data-act="close">取消</button>
-     </div>`
-  );
-}
-
-function dexModalHtml() {
-  const cells = Object.values(DEX.species)
+function dexCellsHtml() {
+  return Object.values(DEX.species)
     .map((s) => {
       const done = L.isResearched(S, s.id);
       const progress = L.researchPercent(S, s.id);
-      return `<div class="dex-cell ${done ? '' : 'unseen'}" title="${done ? `${s.zh} · ${s.genus} · ${eggGroupsZh(s.eggGroups)}` : `研究中 ${progress}%`}">
-        <img src="${sprite(s.id)}"${imgFallback(s.id)} alt="" />
-        <div class="dex-name">${done ? s.zh : '???'}</div>
+      const rec = done ? L.dexRecord(S, s.id) : null;
+      const lost = done ? rec?.lost ?? L.researchLostCount(S, s.id) : L.researchLostCount(S, s.id);
+      // 用原始进度判断“研究过没有”，避免稀有物种 1 点进度被四舍五入成 0%
+      const known = L.researchProgress(S, s.id) > 0;
+      const stateClass = done ? 'done' : known ? 'partial' : 'unseen';
+      const bits = [];
+      if (!known) {
+        bits.push('尚未研究');
+      } else {
+        bits.push(`${s.zh} · ${s.genus} · 研究 ${progress}%`);
+        bits.push(`已损耗 ${lost} 只`);
+        if (done && rec) bits.push(`完成于第 ${rec.day} 天 · ${L.dexRecordText(rec)}`);
+      }
+      const title = bits.join(' · ');
+      const attrs = known ? ` data-act="open-species" data-id="${s.id}" role="button" tabindex="0"` : '';
+      return `<div class="dex-cell ${stateClass}"${attrs} title="${title}">
+        <img src="${sprite(s.id)}"${imgFallback(s.id)} alt="" loading="lazy" decoding="async" />
+        <div class="dex-name">${known ? s.zh : '???'}</div>
         <div class="dex-bar"><i style="width:${done ? 100 : progress}%"></i></div>
-        <div class="dex-pct">${done ? '完成' : `${progress}%`}</div>
+        <div class="dex-pct">${done ? '完成' : `${progress}%`}${known && lost ? ` · 损${lost}` : ''}</div>
       </div>`;
     })
     .join('');
-  return modalShell(`图鉴 ${S.dex.length}/151 · 按研究完成度`, `<div class="dex-grid">${cells}</div>`);
+}
+
+// 已完成的条目都要列出来；老存档没有研究行为的，标“无记录”
+function dexRecordsHtml() {
+  const doneIds = [...S.dex].sort((a, b) => {
+    const ra = S.dexRecords?.[a];
+    const rb = S.dexRecords?.[b];
+    if (ra && rb) return (ra.day || 0) - (rb.day || 0);
+    if (ra) return -1;
+    if (rb) return 1;
+    return a - b;
+  });
+  return (
+    doneIds
+      .map((id) => {
+        const s = sp(id);
+        const rec = S.dexRecords?.[id] || null;
+        const lostText = rec && rec.lost != null ? ` · 损耗 ${rec.lost} 只` : '';
+        return `<div class="dex-record">
+          <img src="${sprite(id)}"${imgFallback(id)} alt="" />
+          <b>${s?.zh || id}</b>
+          <span class="d">D${rec?.day ?? '-'}</span>
+          <span class="beh">${L.dexRecordText(rec)}${lostText}</span>
+        </div>`;
+      })
+      .join('') || '<div class="empty-tip">还没有完成的图鉴条目。</div>'
+  );
+}
+
+function dexPageSignature() {
+  const research = Object.keys(S.research || {})
+    .map((k) => `${k}=${S.research[k]}`)
+    .join(',');
+  const losses = Object.keys(S.researchLoss || {})
+    .map((k) => `${k}:${S.researchLoss[k]}`)
+    .join(',');
+  const recs = Object.keys(S.dexRecords || {})
+    .map((k) => `${k}:${S.dexRecords[k]?.day ?? ''}:${S.dexRecords[k]?.lost ?? ''}`)
+    .join(',');
+  return `${S.dex.join(',')}|${research}|${losses}|${recs}`;
+}
+
+function ensureDexPage() {
+  const s = dexPageSignature();
+  if (s === sig.dex) return;
+  sig.dex = s;
+  const host = el('dex-page');
+  if (!host) return;
+  const totalLost = Object.keys(S.dexRecords || {}).reduce((sum, id) => sum + (S.dexRecords[id]?.lost || 0), 0);
+  host.innerHTML = `<div class="dex-grid">${dexCellsHtml()}</div>
+    <div class="section-title">研究记录 · 已完成 ${S.dex.length} 条${totalLost ? ` · 累计损耗 ${totalLost} 只` : ''}</div>
+    <div class="dex-records">${dexRecordsHtml()}</div>`;
+}
+
+function ranksModalHtml() {
+  const cur = L.currentRank(S);
+  const next = L.nextRank(S);
+  const rows = RANKS.map((r) => {
+    const owned = (S.rank ?? 0) >= r.id;
+    const isNext = (S.rank ?? 0) + 1 === r.id;
+    const repOk = S.rep >= r.rep;
+    const goldOk = S.gold >= r.cost;
+    const cls = owned ? 'owned' : isNext ? 'next' : 'locked';
+    const right = owned
+      ? '<span class="tag ok">已获得</span>'
+      : isNext
+      ? `<button class="mini" data-act="promote" ${repOk && goldOk ? '' : 'disabled'}>
+           ${repOk ? (goldOk ? `晋升 🪙 ${fmt(r.cost)}` : '资金不足') : `声望需 ${r.rep}`}
+         </button>`
+      : `<span class="tag no">未解锁</span>`;
+    return `<div class="rank-row ${cls}">
+      <div class="rank-name">${r.name}<small>声望 ${r.rep} · 🪙 ${fmt(r.cost)}</small></div>
+      <div class="rank-desc">${r.desc}</div>
+      <div class="rank-act">${right}</div>
+    </div>`;
+  }).join('');
+  const tip = next
+    ? `晋升到 ${next.name} 需要声望 ${next.rep}（当前 ${Math.round(S.rep)}）与 ${fmt(next.cost)} 资金。`
+    : '你已经在火箭队的顶端了。';
+  return modalShell(
+    `职级 · ${cur.name}`,
+    `<p class="hint" style="font-size:12px;color:var(--muted);margin-bottom:10px">职级决定设施能升到多高。${tip}</p>
+     <div class="rank-list">${rows}</div>`
+  );
+}
+
+function menuModalHtml() {
+  return modalShell(
+    '菜单',
+    `<div class="menu-list">
+      <button data-act="open-help">📖 玩法说明</button>
+      <button data-act="open-ranks">🎖 职级 · ${L.currentRank(S).name}</button>
+      <button data-act="save">💾 保存进度</button>
+      <button class="danger" data-act="quit">${S.quit ? '🚪 本局已结束（查看结算）' : '🚪 离开火箭队'}</button>
+    </div>`
+  );
 }
 
 function helpModalHtml() {
@@ -928,15 +1440,20 @@ function helpModalHtml() {
     `<div class="help">
       <p>你是年轻的大木博士，被“请”进火箭队的地下基地：替他们管理与运营抢来的宝可梦，同时偷偷记录每一只的数据，为日后那部图鉴写下第一手说明。</p>
       <ul>
-        <li><b>配种</b>：把一雄一雌、蛋组有交集的两只宝可梦放进同一栏位，就会产蛋（蛋组见卡片与详情）。</li>
-        <li><b>孵化</b>：蛋在孵化器中倒计时，孵出的永远是该家族的<b>最初形态</b>（猫老大的蛋孵出喵喵）；孵化步数越高的宝可梦越慢，升级孵化器可加速并增加蛋位。</li>
-        <li><b>养成</b>：栏位中的宝可梦会持续获得经验，喂树果可加速成长。</li>
-        <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的图鉴条目。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽被放生；实验具体影响不会事先显示，只标资金消耗。</li>
+        <li><b>繁育</b>：栏位里放两只就会积累繁育条。条满时如果条件正常（一雄一雌、蛋组交叠）就会产蛋，母体因此损耗耐受度（低等级母体大约撑 3 只后代，等级越高越耐用）；没有雌性时由<b>百变怪</b>承担损耗，雄性不掉耐受度。条件不正常，两只就会争斗——<b>较弱的那只阵亡</b>，另一只受伤。</li>
+        <li><b>蛋组</b>：博士一开始并不知道任何宝可梦的蛋组，界面上只显示 ???。只有亲手繁育出蛋，才会确认两边交汇的那个蛋组。</li>
+        <li><b>孵化</b>：蛋在孵化器中倒计时，孵出的永远是该家族的<b>最初形态</b>；孵化步数越高越慢，升级孵化器可加速并增加蛋位。孵出后默认进<b>围栏</b>，要自己放进培育栏。</li>
+        <li><b>养成</b>：栏位中的宝可梦会持续获得经验，喂<b>经验糖果</b>可加速成长；不在栏位也不在实验室的会待在<b>围栏</b>里。围栏里同种同性会互相争斗，耐受度持续下降——数量越多掉得越快，分开即可停止。</li>
+        <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的图鉴条目，<b>没有免费的实验</b>。每种实验都有冷却，越深入的实验冷却越久（最长 30 秒）；该物种研究完成后冷却取消。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽消亡，或手动放生；实验具体影响不会事先显示。</li>
+        <li><b>耐受度</b>：上限随等级提高（Lv.1 为 100，每级 +2），<b>雄性再乘 1.25</b>；出厂即满，但只有进了实验室才能在界面上看到。繁育、争斗、实验都会消耗它，归零即离队（实验室消亡 / 争斗阵亡）。物种研究完成后，只剩最伤身的那种实验还能用。</li>
+        <li><b>能力值</b>：刚接触的物种看不全能力值。随着该物种的研究进度，能力项会按种族值从高到低逐项披露。</li>
+        <li><b>图鉴</b>：研究过的物种会显示灰度图标和进度，100% 完成后才变成彩色；已完成条目会记录研究行为与损耗掉的个体数。</li>
         <li><b>进化</b>：升级自动进化；石之进化与通信进化需要在详情页手动触发（消耗道具）。</li>
-        <li><b>部门需求</b>：后勤部、研究部、警卫队、通讯部、走私组、外勤组会提出需求，分任意 / 属性 / 指定物种三类；按时交付可得资金与声望，过期扣声望。</li>
-        <li><b>经营</b>：资金用于买蛋、树果、进化石与设施。每天市场会刷新，部门需求物种的蛋更容易出现。</li>
+        <li><b>部门需求</b>：六个部门加上<b>总裁办</b>会提出需求，分任意 / 属性 / 指定物种三类；按时交付可得资金与声望，普通部门金币已大幅下调。过期或主动放弃不再扣声望，但长时间不完成需求会让声望逐日流失，闲置越久流失越快。总裁办的单子又少又难，报酬远高于普通部门，框体带金色专属标识。</li>
+        <li><b>经营与职级</b>：资金用于买蛋、经验糖果、进化石与设施。声望达标后花资金晋升职级，职级决定设施能升到多高。</li>
       </ul>
-      <p><b>胜利条件</b>：151 个物种的图鉴研究全部完成。</p>
+      <p><b>胜利条件</b>：151 个物种的图鉴研究全部完成；或职级达到干部后，完成任意一只传说宝可梦的研究。</p>
+      <p class="hint" style="color:var(--muted);font-size:12px">传闻：偶尔会有正义之士摸进基地营救宝可梦，造成声望、资金、宝可梦与蛋的损失——这条还没实装。</p>
       <p style="color:var(--muted);font-size:12px">数据来自 PokeAPI。存档保存在浏览器本地。</p>
     </div>`
   );
@@ -944,18 +1461,25 @@ function helpModalHtml() {
 
 function winModalHtml() {
   const st = S.stats || {};
+  const legendWin = S.winKind === 'legendary';
   return modalShell(
-    '🏆 图鉴完成',
+    legendWin ? '🏆 传说研究完成' : '🏆 图鉴完成',
     `<div class="help">
-      <p>151 只宝可梦全部记录在案。你合上笔记本——这些数据，迟早会变成那部图鉴里的说明文字。</p>
+      <p>${
+        legendWin
+          ? `你以${L.currentRank(S).name}的身份完成了传说宝可梦的研究。基地里再没有人敢质疑你的权限。`
+          : '151 只宝可梦全部记录在案。你合上笔记本——这些数据，迟早会变成那部图鉴里的说明文字。'
+      }</p>
       <div class="stats-grid" style="margin:12px 0">
         <div class="kv"><span class="k">达成天数</span><span class="v">第 ${S.wonDay ?? Math.floor(S.day)} 天</span></div>
         <div class="kv"><span class="k">累计收入</span><span class="v">🪙 ${fmt(st.earned || 0)}</span></div>
         <div class="kv"><span class="k">完成需求</span><span class="v">${st.delivered || 0} 单</span></div>
         <div class="kv"><span class="k">孵化</span><span class="v">${st.hatched || 0} 枚蛋</span></div>
         <div class="kv"><span class="k">配种</span><span class="v">${st.bred || 0} 次</span></div>
+        <div class="kv"><span class="k">争斗</span><span class="v">${st.fights || 0} 次</span></div>
         <div class="kv"><span class="k">实验</span><span class="v">${st.experiments || 0} 次</span></div>
-        <div class="kv"><span class="k">放生</span><span class="v">${st.released || 0} 只</span></div>
+        <div class="kv"><span class="k">损失</span><span class="v">${st.released || 0} 只</span></div>
+        <div class="kv"><span class="k">职级</span><span class="v">${L.currentRank(S).name}</span></div>
         <div class="kv"><span class="k">声望</span><span class="v">${Math.round(S.rep)}</span></div>
       </div>
       <div class="actions">
@@ -965,13 +1489,36 @@ function winModalHtml() {
   );
 }
 
-function resetModalHtml() {
+function quitModalHtml() {
   return modalShell(
-    '重新开始？',
-    `<p>当前进度（第 ${Math.floor(S.day)} 天 · 🪙 ${fmt(S.gold)} · 图鉴 ${S.dex.length}）将被清空，无法恢复。</p>
+    '离开火箭队？',
+    `<p>你可以就此离开这座地下基地：不再管理培育栏，也不再替他们补数据。</p>
+     <p style="color:var(--muted);font-size:12px;margin-top:8px">本局会立即结束（无法继续推进时间），当前进度仍会留在存档里。这是认输，不是重开。</p>
      <div class="actions">
-       <button data-act="confirm-reset" style="border-color:rgba(255,107,122,.5);color:#ffb3ba">确认重开</button>
-       <button class="ghost" data-act="close">取消</button>
+       <button data-act="confirm-quit" style="border-color:rgba(255,107,122,.5);color:#ffb3ba">确认离开</button>
+       <button class="ghost" data-act="close">再想想</button>
      </div>`
+  );
+}
+
+function quitDoneModalHtml() {
+  const st = S.stats || {};
+  return modalShell(
+    '你离开了火箭队',
+    `<div class="help">
+      <p>你把笔记本塞进外套，走过培育栏，没有回头。基地的灯还亮着——但那些数据已经不属于他们了。</p>
+      <div class="stats-grid" style="margin:12px 0">
+        <div class="kv"><span class="k">坚持到</span><span class="v">第 ${S.quitDay ?? Math.floor(S.day)} 天</span></div>
+        <div class="kv"><span class="k">图鉴</span><span class="v">${S.dex.length}/151</span></div>
+        <div class="kv"><span class="k">累计收入</span><span class="v">🪙 ${fmt(st.earned || 0)}</span></div>
+        <div class="kv"><span class="k">完成需求</span><span class="v">${st.delivered || 0} 单</span></div>
+        <div class="kv"><span class="k">孵化</span><span class="v">${st.hatched || 0} 枚蛋</span></div>
+        <div class="kv"><span class="k">职级</span><span class="v">${L.currentRank(S).name}</span></div>
+      </div>
+      <div class="actions">
+        <button data-act="new-game">重新入职（新游戏）</button>
+        <button class="ghost" data-act="close">留在这里看看</button>
+      </div>
+    </div>`
   );
 }

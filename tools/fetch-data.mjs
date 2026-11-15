@@ -63,6 +63,27 @@ function pickZh(names) {
   return pickZhField(names, 'name');
 }
 
+// 第一世代图鉴描述：优先 Let's Go 皮卡丘/伊布（官方简体中文，151 只全覆盖），
+// 退回剑盾；再不行取红版英文原文。清洗换行、换页符与软连字符。
+function pickFlavor(sp) {
+  const entries = sp.flavor_text_entries || [];
+  const zhOf = (version) => entries.find((e) => e.version?.name === version && langName(e) === 'zh-hans');
+  const pick =
+    zhOf('lets-go-pikachu') ||
+    zhOf('lets-go-eevee') ||
+    entries.find((e) => langName(e) === 'zh-hans' && ['sword', 'shield'].includes(e.version?.name)) ||
+    entries.find((e) => langName(e) === 'zh-hans') ||
+    entries.find((e) => e.version?.name === 'red' && langName(e) === 'en');
+  if (!pick) return '';
+  return (pick.flavor_text || '')
+    .replace(/[\n\f\r\u00ad]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    // 中文排版：去掉汉字/中文标点两侧由换行带出的多余空格
+    .replace(/\s+(?=[\u4e00-\u9fff（《【「『])/g, '')
+    .replace(/(?<=[\u4e00-\u9fff，。！？；：、》）】」』])\s+/g, '')
+    .trim();
+}
+
 function flattenChain(chain, fromId, out) {
   const toId = idFromUrl(chain.species.url);
   if (fromId) {
@@ -123,6 +144,7 @@ for (const { id, sp, pk } of pairs) {
     name: sp.name,
     zh,
     genus: genusZh,
+    flavor: pickFlavor(sp),
     types: pk.types.slice().sort((a, b) => a.slot - b.slot).map((t) => t.type.name),
     stats: Object.fromEntries(pk.stats.map((s) => [statKey(s.stat.name), s.base_stat])),
     abilities: pk.abilities.map((a) => a.ability.name),

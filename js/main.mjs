@@ -1,29 +1,39 @@
 // 启动：加载数据、读取存档、驱动主循环
-import { initDex, DEX } from './data.mjs';
+import { initDex, initExperiments, DEX } from './data.mjs';
+import { CONFIG, RANKS } from './rules.mjs';
+import { deserialize, loadRaw, persist, clearSave } from './save.mjs';
 import * as L from './logic.mjs';
 import * as UI from './ui.mjs';
 
-const SAVE_KEY = L.CONFIG.saveKey;
-
 async function boot() {
-  const res = await fetch('data/dex.json');
-  if (!res.ok) throw new Error(`无法加载 data/dex.json（HTTP ${res.status}）`);
-  initDex(await res.json());
+  // 数据：图鉴 + 定制实验分两个文件维护，启动时一起加载
+  const [dexRes, expRes] = await Promise.all([
+    fetch('data/dex.json'),
+    fetch('data/experiments.json'),
+  ]);
+  if (!dexRes.ok) throw new Error(`无法加载 data/dex.json（HTTP ${dexRes.status}）`);
+  if (!expRes.ok) throw new Error(`无法加载 data/experiments.json（HTTP ${expRes.status}）`);
+  initDex(await dexRes.json());
+  initExperiments(await expRes.json());
 
-  let savedRaw = null;
+  // 读档：save.mjs 负责当前/旧存档 key 与迁移标记
+  let loaded = { raw: null, migrated: false, error: null };
   try {
-    savedRaw = localStorage.getItem(SAVE_KEY);
+    loaded = loadRaw(localStorage);
   } catch (err) {
-    console.warn('localStorage 不可用', err);
+    loaded.error = err;
   }
+  if (loaded.error) console.warn('localStorage 不可用', loaded.error);
 
-  let state = L.deserialize(savedRaw);
+  let migrated = loaded.migrated;
+  let state = deserialize(loaded.raw);
   const fresh = !state;
   if (!state) state = L.newGame();
 
   const save = (silent = false) => {
     try {
-      localStorage.setItem(SAVE_KEY, L.serialize(state));
+      persist(localStorage, state, migrated);
+      migrated = false;
       if (!silent) UI.toast('进度已保存', 'good');
       return true;
     } catch (err) {
@@ -37,8 +47,9 @@ async function boot() {
     onSave: () => save(false),
     onReset: () => {
       try {
-        localStorage.removeItem(SAVE_KEY);
+        clearSave(localStorage);
       } catch {}
+      migrated = false;
       state = L.newGame();
       UI.setState(state);
       save(true);
@@ -48,10 +59,11 @@ async function boot() {
 
   if (fresh) {
     UI.pushLog('你是年轻的大木博士，被火箭队“请”来管理他们抢来的宝可梦。', 'info');
-    UI.pushLog('一雄一雌、蛋组有交集就能配种；孵出的永远是家族最初形态。', 'info');
+    UI.pushLog('谁和谁能生出蛋，你一开始并不知道——确认之前，蛋组只会显示 ???。', 'info');
+    UI.pushLog('栏位里放两只，繁育条就会走；条件不对的话，它们会打起来。', 'info');
     UI.pushLog('图鉴不会因为获得而解锁：把宝可梦送进实验室做实验，积累物种研究进度。', 'info');
-    UI.pushLog('实验室是个单向门——进去就只能实验到放生为止。', 'info');
-    UI.pushLog('集齐 151 个物种的图鉴研究即为胜利。', 'info');
+    UI.pushLog('耐受度只有在实验室里才看得见；归零就会被放生。', 'info');
+    UI.pushLog('集齐 151 个物种的图鉴研究即为胜利。想收手，随时可以离开火箭队。', 'info');
   }
 
   // 主循环：真实时间 → 游戏天数
@@ -62,7 +74,8 @@ async function boot() {
     last = now;
     const spd = UI.getSpeed();
     if (spd > 0) {
-      const events = L.tick(state, ((dt / 1000) * spd) / L.CONFIG.secondsPerDay);
+      const realSeconds = dt / 1000;
+      const events = L.tick(state, (realSeconds * spd) / CONFIG.secondsPerDay, realSeconds);
       if (events.length) UI.handleEvents(events);
     }
     renderAcc += dt;
@@ -101,11 +114,29 @@ async function boot() {
       UI.render();
       return state.gold;
     },
-    /** 加树果：__game.addBerries(50) */
-    addBerries(n = 10) {
-      state.berries += n;
+    /** 加经验糖果：__game.addCandies(50) */
+    addCandies(n = 10) {
+      state.candies += n;
       UI.render();
-      return state.berries;
+      return state.candies;
+    },
+    /** 加声望：__game.addRep(20) */
+    addRep(n = 20) {
+      state.rep = Math.min(100, state.rep + n);
+      UI.render();
+      return state.rep;
+    },
+    /** 直接设定职级（调试用）：__game.setRank(3) */
+    setRank(n = 0) {
+      state.rank = Math.max(0, Math.min(RANKS.length - 1, Math.round(n)));
+      UI.render();
+      return L.currentRank(state).name;
+    },
+    /** 认输：__game.quit() */
+    quit() {
+      const r = L.quitGame(state);
+      UI.render();
+      return r;
     },
     /** 直接生成一只宝可梦：__game.give(149, 30) */
     give(dexId, level = 20) {
@@ -136,9 +167,9 @@ async function boot() {
       return r;
     },
     /** 查看存档用的 key */
-    saveKey: SAVE_KEY,
+    saveKey: CONFIG.saveKey,
   };
-  console.info('[火箭队模拟器] 调试接口已就绪：__game.fastForward(10) / __game.addGold(5000) / __game.give(25, 30)');
+  console.info('[火箭队模拟器] 调试接口已就绪：__game.fastForward(10) / __game.addGold(5000) / __game.give(25, 30) / __game.setRank(3)');
 }
 
 boot().catch((err) => {

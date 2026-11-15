@@ -1,0 +1,3357 @@
+{
+  "version": 1,
+  "species": {
+    "1": {
+      "experiments": [
+        {
+          "id": "sp1-fasting",
+          "name": "断食观察",
+          "desc": "只给水，记录背上的种子能供它撑多少天。",
+          "tier": "gentle"
+        },
+        {
+          "id": "sp1-seed-weight",
+          "name": "种子称重",
+          "desc": "定期称量背上的种子，记录养分转移带来的重量变化。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp1-seed-cut",
+          "name": "切除背上的种子",
+          "desc": "把种子连根取下，观察失去营养来源后的反应。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp1-seed-fluid",
+          "name": "营养液提取",
+          "desc": "从种子中抽出汁液，分析储存养分的组成。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "2": {
+      "experiments": [
+        {
+          "id": "sp2-bud-scent",
+          "name": "花苞闻香",
+          "desc": "在花苞发出香味时靠近，记录气味浓度与开花阶段。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp2-force-bloom",
+          "name": "强制催花",
+          "desc": "额外灌注养分，观察花苞是否会提前绽开。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp2-bud-cut",
+          "name": "花苞切开",
+          "desc": "剖开花苞，检查内部花蕊与养分输送结构。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "3": {
+      "experiments": [
+        {
+          "id": "sp3-shade",
+          "name": "遮光实验",
+          "desc": "用遮光布盖住背上的花，记录储存的能量能撑多久。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp3-petal-sample",
+          "name": "花瓣采样",
+          "desc": "从大花上取一小片花瓣，观察断面渗出的汁液。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp3-petal-burn",
+          "name": "强光灼烧",
+          "desc": "用聚光灼烧花瓣边缘，观察花的自我修复速度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp3-nectar",
+          "name": "花蜜分析",
+          "desc": "吸取少量花蜜，分析其中的糖分与气味成分。",
+          "tier": "gentle"
+        },
+        {
+          "id": "sp3-photosynthesis",
+          "name": "光合速率测试",
+          "desc": "在不同光照下测量花的能量输出。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "4": {
+      "experiments": [
+        {
+          "id": "sp4-flame-audio",
+          "name": "尾焰录音",
+          "desc": "在安静房间里录下尾焰燃烧的声音，分析火焰强度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp4-flame-temp",
+          "name": "尾焰测温",
+          "desc": "用测温仪贴近尾尖，记录情绪变化时的温度波动。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp4-flame-out",
+          "name": "强制熄火",
+          "desc": "把尾巴浸入阻燃液，观察火焰熄灭后的反应。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "5": {
+      "experiments": [
+        {
+          "id": "sp5-anger",
+          "name": "情绪激怒",
+          "desc": "用假对手反复挑衅，记录它情绪高涨时的火焰颜色。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp5-blue-flame",
+          "name": "青焰采样",
+          "desc": "逼它连续喷出青白色火焰，直到喉咙灼伤，再截取火舌样本。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp5-battle-footage",
+          "name": "战斗录像",
+          "desc": "记录它与训练机对战时喷火的频率和时长。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "6": {
+      "experiments": [
+        {
+          "id": "sp6-flame-link",
+          "name": "尾焰联动测试",
+          "desc": "让它朝靶子喷火，同时记录尾焰的高度变化。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp6-heat-limit",
+          "name": "高温耐受",
+          "desc": "让它持续喷火直到体力见底，测量体温与尾焰的极限。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp6-flight-flame",
+          "name": "飞行尾焰观察",
+          "desc": "在它飞行时从侧面拍摄尾焰的燃烧形态。",
+          "tier": "gentle"
+        },
+        {
+          "id": "sp6-wing-heat",
+          "name": "翼膜耐热测试",
+          "desc": "用热风持续吹翼膜，记录开始变形时的温度。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "7": {
+      "experiments": [
+        {
+          "id": "sp7-shell-reflex",
+          "name": "缩壳反应测试",
+          "desc": "轻敲龟壳，记录它缩入四肢所需的时间。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp7-water-pressure",
+          "name": "水压测量",
+          "desc": "让它朝压力计喷水，记录水柱的冲击力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp7-shell-pry",
+          "name": "强制撬壳",
+          "desc": "用工具撬开龟壳边缘，观察它保护柔软身体的反应。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "8": {
+      "experiments": [
+        {
+          "id": "sp8-head-retract",
+          "name": "缩头测试",
+          "desc": "轻拍它的头，记录缩头时尾巴露出的长度。",
+          "tier": "gentle"
+        },
+        {
+          "id": "sp8-tail-pull",
+          "name": "尾巴拉扯",
+          "desc": "轻拉露出的尾巴，观察它缩壳与挣扎的先后顺序。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp8-shell-seal",
+          "name": "壳体密封测试",
+          "desc": "封住壳口，测量它在缺氧状态下的耐受时间。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "9": {
+      "experiments": [
+        {
+          "id": "sp9-cannon-pressure",
+          "name": "水炮测压",
+          "desc": "让它对准压力靶喷水，记录水炮的峰值压力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp9-continuous-spray",
+          "name": "连续射击",
+          "desc": "记录它连续喷水时水压衰减的曲线。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp9-cannon-inspect",
+          "name": "炮口检查",
+          "desc": "拆开背上的炮口护甲，检查内部导水结构。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "10": {
+      "experiments": [
+        {
+          "id": "sp10-antenna-odor",
+          "name": "触角气味",
+          "desc": "轻触头部的触角，记录气味扩散的范围。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp10-odor-gland",
+          "name": "气味腺采样",
+          "desc": "切取触角基部的一点腺体，分析臭味成分。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp10-swarm-odor",
+          "name": "群聚观察",
+          "desc": "把几只绿毛虫放在一起，观察受惊时的气味联动。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "11": {
+      "experiments": [
+        {
+          "id": "sp11-shell-hardness",
+          "name": "外壳硬度测试",
+          "desc": "用测力计逐步加压，记录外壳开始变形时的力度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp11-impact",
+          "name": "冲击实验",
+          "desc": "从高处落下，观察多大冲击会让身体从壳中脱出。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp11-shell-surface",
+          "name": "壳面观察",
+          "desc": "记录外壳在干燥与潮湿环境下的光泽变化。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "12": {
+      "experiments": [
+        {
+          "id": "sp12-scale-sample",
+          "name": "鳞粉采集",
+          "desc": "用软刷从翅膀上扫下少量鳞粉，观察遇水后的变化。",
+          "tier": "gentle"
+        },
+        {
+          "id": "sp12-rain-flight",
+          "name": "雨中飞行",
+          "desc": "在人工降雨中放飞，记录翅膀防水与飞行姿态。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp12-scale-toxin",
+          "name": "鳞粉毒性测试",
+          "desc": "把它的高浓度鳞粉揉进自己翅膀的伤口，记录红肿与溃烂。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "13": {
+      "experiments": [
+        {
+          "id": "sp13-sting-measure",
+          "name": "毒针测量",
+          "desc": "测量头上毒针的长度与尖端硬度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp13-appetite",
+          "name": "食量观察",
+          "desc": "记录它一天能啃掉多少片树叶。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp13-venom-sample",
+          "name": "毒针取样",
+          "desc": "反复挤压毒针直到腺体出血，抽取毒液观察腐蚀性。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "14": {
+      "experiments": [
+        {
+          "id": "sp14-stinger-reflex",
+          "name": "毒刺反应",
+          "desc": "靠近铁壳蛹，记录它竖起毒刺的触发距离。",
+          "tier": "gentle"
+        },
+        {
+          "id": "sp14-shell-pressure",
+          "name": "外壳承压",
+          "desc": "对外壳施加持续压力，观察它是否还能转动毒刺。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp14-shell-split",
+          "name": "壳缝切开",
+          "desc": "用工具从壳缝插入，观察内部身体与毒刺的连接。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "15": {
+      "experiments": [
+        {
+          "id": "sp15-sting-rate",
+          "name": "针刺频率",
+          "desc": "记录它发现目标后每秒出针的次数。",
+          "tier": "gentle"
+        },
+        {
+          "id": "sp15-sting-drill",
+          "name": "毒针连刺测试",
+          "desc": "让它对木靶连续刺击，记录针尖的磨损与毒液残留。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp15-venom-extract",
+          "name": "毒液采集",
+          "desc": "从尾部毒针强行抽毒，直到毒囊干瘪，记录它的抽搐。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "16": {
+      "experiments": [
+        {
+          "id": "sp16-sand-throw",
+          "name": "扬沙观察",
+          "desc": "在它面前晃动目标，记录扬沙的角度和距离。",
+          "tier": "gentle"
+        },
+        {
+          "id": "sp16-stress-threshold",
+          "name": "应激阈值",
+          "desc": "反复挑衅，记录它从退让到反击的阈值。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "17": {
+      "experiments": [
+        {
+          "id": "sp17-endurance-flight",
+          "name": "耐力飞行",
+          "desc": "让它在封闭通道里持续飞行，记录体力耗尽的时间。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp17-homing",
+          "name": "归巢测试",
+          "desc": "把它带到远处释放，记录返回原地的路线与耗时。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp17-wingbeat",
+          "name": "振翅频率",
+          "desc": "记录它悬停时每秒扇翅的次数。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "18": {
+      "experiments": [
+        {
+          "id": "sp18-speed",
+          "name": "速度测试",
+          "desc": "用高速摄影记录它俯冲时的速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp18-claw-grip",
+          "name": "爪力测量",
+          "desc": "让它死死抓住测力器，直到爪尖崩裂，记录握力极限。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp18-feather-wind",
+          "name": "羽毛风阻",
+          "desc": "把掉落的羽毛放进风洞，观察气流走向。",
+          "tier": "gentle"
+        }
+      ]
+    },
+    "19": {
+      "experiments": [
+        {
+          "id": "sp19-incisor-bite",
+          "name": "门牙咬合测试",
+          "desc": "让它咬不同硬度的材料，记录门牙的咬痕深度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp19-nest-count",
+          "name": "巢穴计数",
+          "desc": "在发现一只的地方布设陷阱，统计附近族群数量。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp19-incisor-wear",
+          "name": "门牙磨损",
+          "desc": "用锉刀磨短门牙，观察它进食与啃咬的变化。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "20": {
+      "experiments": [
+        {
+          "id": "sp20-webbed-feet",
+          "name": "蹼足观察",
+          "desc": "测量后脚蹼的面积，观察划水时的展开方式。",
+          "tier": "gentle"
+        },
+        {
+          "id": "sp20-swim-endurance",
+          "name": "游泳耐力",
+          "desc": "让它在水槽里持续游动，记录体力极限。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp20-underwater-forage",
+          "name": "水下觅食测试",
+          "desc": "把食物藏在水下，记录它闭气寻找的时间。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "21": {
+      "experiments": [
+        {
+          "id": "sp21-circle",
+          "name": "领地盘旋",
+          "desc": "用假入侵者逼它超高速盘旋到体力透支，记录轨迹。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp21-ram",
+          "name": "高速撞击",
+          "desc": "让它朝靶板全速冲刺，测量撞击力与眩晕时间。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp21-dizzy",
+          "name": "眩晕恢复",
+          "desc": "高速旋转后，记录它恢复平衡所需的时间。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "22": {
+      "experiments": [
+        {
+          "id": "sp22-release",
+          "name": "高空释放",
+          "desc": "把它带到高空释放，记录它逃逸时爬升的高度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp22-alert",
+          "name": "警戒阈值",
+          "desc": "用细微声响试探，记录它立即起飞的反应距离。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp22-ground",
+          "name": "强制迫降",
+          "desc": "用强风把它压向地面，观察它挣扎起飞时的耐力。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "23": {
+      "experiments": [
+        {
+          "id": "sp23-length",
+          "name": "体长测量",
+          "desc": "定期测量体长，记录随年龄增长的速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp23-coil",
+          "name": "缠绕压力",
+          "desc": "让它缠住压力传感器，测量收缩时的最大力道。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp23-night-coil",
+          "name": "夜间缠绕",
+          "desc": "在树枝上记录它入睡时的缠绕圈数与姿势。",
+          "tier": "gentle"
+        }
+      ]
+    },
+    "24": {
+      "experiments": [
+        {
+          "id": "sp24-pattern-rub",
+          "name": "花纹拓印",
+          "desc": "用拓印纸复制腹部花纹，和已知种类逐一比对。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp24-pattern-react",
+          "name": "花纹刺激",
+          "desc": "用不同颜色的假蛇逼近，观察腹部花纹是否变化。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp24-belly-press",
+          "name": "腹部按压",
+          "desc": "按压腹部花纹区域，记录它肌肉收紧与反击的强度。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "25": {
+      "experiments": [
+        {
+          "id": "sp25-cheek",
+          "name": "电囊放电",
+          "desc": "触摸脸颊电囊，测量不同情绪下的电压。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp25-overload",
+          "name": "静电过载",
+          "desc": "强行给电囊充电，观察过载时的放电与虚弱反应。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp25-storm",
+          "name": "雷雨模拟",
+          "desc": "用闪光与雷声刺激，记录电囊的充能速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp25-sac-inspect",
+          "name": "电囊结构检查",
+          "desc": "切开脸颊电囊外层，检查内部储电结构。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "26": {
+      "experiments": [
+        {
+          "id": "sp26-charge",
+          "name": "蓄电攻击性",
+          "desc": "持续充电，记录它从温顺转为攻击的阈值。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp26-glow",
+          "name": "暗处发光",
+          "desc": "在暗室记录它体表发光的强度与部位。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp26-force-discharge",
+          "name": "强制放电",
+          "desc": "用导体强行引电，观察放电后的虚弱与恢复。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "27": {
+      "experiments": [
+        {
+          "id": "sp27-dew",
+          "name": "露水凝结",
+          "desc": "夜间降温，记录表皮凝结露水的量与位置。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp27-dry",
+          "name": "干燥耐受",
+          "desc": "把它放进干燥箱，记录皮肤开裂前的时长。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp27-sand",
+          "name": "沙浴磨损",
+          "desc": "让它反复沙浴，测量表皮磨损与再生速度。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "28": {
+      "experiments": [
+        {
+          "id": "sp28-claw",
+          "name": "爪力测试",
+          "desc": "让它抓挠测力板，记录爪尖压力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp28-claw-break",
+          "name": "断爪再生",
+          "desc": "人为折断一根爪尖，记录再生速度与形态。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp28-dig",
+          "name": "挖掘耐力",
+          "desc": "让它在硬土里持续挖掘，记录体力极限。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "29": {
+      "experiments": [
+        {
+          "id": "sp29-horn",
+          "name": "毒角取样",
+          "desc": "从犄角中抽取毒液，分析毒性成分。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp29-temper",
+          "name": "性情阈值",
+          "desc": "用假敌试探，记录它从回避到反击的阈值。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp29-group",
+          "name": "群体相处",
+          "desc": "把两只尼多兰放在一起，记录互动与威吓行为。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "30": {
+      "experiments": [
+        {
+          "id": "sp30-spike-retract",
+          "name": "收刺反应",
+          "desc": "在不同环境里记录它收刺与竖刺的切换条件。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp30-relax",
+          "name": "放松阈值",
+          "desc": "逐步靠近，记录它允许的最近距离。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp30-force-spike",
+          "name": "强制竖刺",
+          "desc": "用刺激物逼它竖刺，观察刺的强度与耐力。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "31": {
+      "experiments": [
+        {
+          "id": "sp31-scale",
+          "name": "鳞片硬度",
+          "desc": "用压力计测量鳞片开始变形的阈值。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp31-scale-pull",
+          "name": "剥鳞再生",
+          "desc": "拔下一片鳞片，记录再生周期与新生鳞的硬度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp31-charge",
+          "name": "蛮力冲撞",
+          "desc": "让它全力冲撞测力墙，记录冲击力。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "32": {
+      "experiments": [
+        {
+          "id": "sp32-hearing",
+          "name": "听觉敏感度",
+          "desc": "用不同频率的声音测试它耳朵的反应。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp32-needle",
+          "name": "毒针反应",
+          "desc": "制造威胁，记录它出针的速度与毒液量。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp32-distance",
+          "name": "警戒距离",
+          "desc": "逐步靠近，记录它开始竖耳的距离。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "33": {
+      "experiments": [
+        {
+          "id": "sp33-horn-ram",
+          "name": "犄角撞击",
+          "desc": "让它撞靶，测量冲击力与毒素释放量。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp33-venom-flow",
+          "name": "毒素流量",
+          "desc": "反复撞击，记录毒素分泌的衰减曲线。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp33-horn-strength",
+          "name": "犄角强度",
+          "desc": "用压力机压犄角，测量断裂阈值。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "34": {
+      "experiments": [
+        {
+          "id": "sp34-skin",
+          "name": "皮肤硬度",
+          "desc": "用硬度计测量皮肤的抗压值。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp34-horn-pierce",
+          "name": "犄角穿刺",
+          "desc": "让它刺穿不同硬度的材料，记录极限。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp34-ram",
+          "name": "冲撞耐受",
+          "desc": "让它连续冲撞，观察皮肤与肌肉的损伤。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp34-skin-cut",
+          "name": "皮肤切片",
+          "desc": "取一小块皮肤样本，分析硬度来源。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "35": {
+      "experiments": [
+        {
+          "id": "sp35-rare",
+          "name": "稀有性追踪",
+          "desc": "在夜间布设监测点，记录它现身的条件。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp35-hide",
+          "name": "躲藏行为观察",
+          "desc": "在布置好的场地里记录它回避人类的行为。",
+          "tier": "gentle"
+        }
+      ]
+    },
+    "36": {
+      "experiments": [
+        {
+          "id": "sp36-stealth",
+          "name": "隐身观察",
+          "desc": "在结界里记录它隐藏身形时的活动规律。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp36-fairy",
+          "name": "妖精能量采样",
+          "desc": "用仪器抽取它周围的妖精能量，观察反应。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp36-isolate",
+          "name": "隔离应激",
+          "desc": "把它单独隔离，记录它试图逃离的强度。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "37": {
+      "experiments": [
+        {
+          "id": "sp37-tail-count",
+          "name": "尾巴计数",
+          "desc": "定期记录尾巴末端分叉的数量与形态。",
+          "tier": "gentle"
+        },
+        {
+          "id": "sp37-fur",
+          "name": "毛皮取样",
+          "desc": "剪下一小撮毛皮，分析保温结构与再生。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp37-flame",
+          "name": "火焰温度",
+          "desc": "测量它喷出的火苗温度与持续时间。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "38": {
+      "experiments": [
+        {
+          "id": "sp38-legend",
+          "name": "九尾传说溯源",
+          "desc": "比对九条尾巴的形态差异，核对传说记载。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp38-flame-limit",
+          "name": "火焰极限",
+          "desc": "让它持续喷火，测量温度上限。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp38-mind",
+          "name": "精神干扰",
+          "desc": "用强光与噪音干扰，观察它的报复行为。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp38-tail-sample",
+          "name": "尾巴样本",
+          "desc": "从一条尾巴上取少量毛发放到仪器里分析。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "39": {
+      "experiments": [
+        {
+          "id": "sp39-song",
+          "name": "歌声频率",
+          "desc": "录下歌声，分析让人入睡的频段。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp39-sleep",
+          "name": "睡眠诱导",
+          "desc": "让它持续唱歌直到嗓子沙哑、气息紊乱，记录入睡效果。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp39-wake",
+          "name": "歌声打断",
+          "desc": "在它唱歌时反复掐断，观察声带受损与情绪失控。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "40": {
+      "experiments": [
+        {
+          "id": "sp40-inflate",
+          "name": "膨胀极限",
+          "desc": "持续充气，测量身体膨胀的上限。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp40-bounce",
+          "name": "弹性回弹",
+          "desc": "按压身体，记录回弹速度与形变恢复。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp40-puncture",
+          "name": "针刺泄气",
+          "desc": "用细针扎破表皮，观察漏气与恢复。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "41": {
+      "experiments": [
+        {
+          "id": "sp41-ultrasound",
+          "name": "超声波记录",
+          "desc": "用接收器录下飞行时的超声波，分析频率变化。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp41-echolocation",
+          "name": "回声定位测试",
+          "desc": "在迷宫里释放，记录它靠回声找路的时间。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp41-light",
+          "name": "强光干扰",
+          "desc": "用强光打乱它的回声定位，观察撞壁与恢复。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "42": {
+      "experiments": [
+        {
+          "id": "sp42-blood",
+          "name": "吸血量测试",
+          "desc": "让它过量吸食血包，直到胃部鼓胀、无法起飞。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp42-stealth",
+          "name": "潜行接近测试",
+          "desc": "让它反复潜行到肌肉痉挛，记录接近目标的路线。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp42-fang",
+          "name": "尖牙穿刺",
+          "desc": "用压力计测尖牙刺穿材料所需的力。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "43": {
+      "experiments": [
+        {
+          "id": "sp43-pull",
+          "name": "拔草实验",
+          "desc": "把它从土里拔起，记录叫声的持续时间与强度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp43-roots",
+          "name": "根系观察",
+          "desc": "小心挖开根部，记录根须与土壤的结合方式。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp43-sunlight",
+          "name": "日照反应",
+          "desc": "记录它白天在阳光下叶片展开的程度。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "44": {
+      "experiments": [
+        {
+          "id": "sp44-odor",
+          "name": "气味浓度测试",
+          "desc": "用气味计测量花蕊散发的浓度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp44-tolerance",
+          "name": "臭味耐受",
+          "desc": "把它自己关进密闭舱，让花蕊的臭味反灌，记录它被熏到萎靡的时间。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp44-nectar",
+          "name": "臭味取样",
+          "desc": "从花蕊中挤出汁液，分析臭味来源。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "45": {
+      "experiments": [
+        {
+          "id": "sp45-pollen",
+          "name": "花粉采集",
+          "desc": "强行摇动花瓣直到花茎撕裂，收集渗出的有毒花粉。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp45-spread",
+          "name": "花粉扩散测试",
+          "desc": "在封闭场地记录花粉的扩散范围。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp45-volume",
+          "name": "巨响耐受",
+          "desc": "记录它摇动花瓣时发出的音量与频率。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "46": {
+      "experiments": [
+        {
+          "id": "sp46-nutrient",
+          "name": "营养流向测试",
+          "desc": "给树根注入标记养分，追踪被蘑菇截留的比例。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp46-mushroom",
+          "name": "蘑菇分离",
+          "desc": "尝试把背上的蘑菇与虫体分离，观察双方反应。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp46-dig",
+          "name": "挖掘观察",
+          "desc": "记录它挖洞接近树根的路线。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "47": {
+      "experiments": [
+        {
+          "id": "sp47-consciousness",
+          "name": "意识归属测试",
+          "desc": "用刺激测试虫体与蘑菇各自的反应。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp47-mushroom-sample",
+          "name": "蘑菇取样",
+          "desc": "从菌盖取一块组织，分析神经结构。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp47-bug-reflex",
+          "name": "虫体反应测试",
+          "desc": "刺激虫体，记录蘑菇是否接管动作。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "48": {
+      "experiments": [
+        {
+          "id": "sp48-eye",
+          "name": "复眼结构观察",
+          "desc": "用放大镜记录复眼的小眼排列。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp48-radar",
+          "name": "雷达功能测试",
+          "desc": "让它长时间锁定移动目标直到复眼充血，记录定位精度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp48-blind",
+          "name": "复眼遮光",
+          "desc": "遮住部分小眼，观察定位能力下降的程度。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "49": {
+      "experiments": [
+        {
+          "id": "sp49-scale",
+          "name": "鳞粉附着测试",
+          "desc": "把鳞粉撒在材料上，测量附着的牢固度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp49-toxin",
+          "name": "毒素渗透",
+          "desc": "把它的鳞粉按进自己翅膀的伤口，记录毒素渗入与溃烂。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp49-wash",
+          "name": "洗脱实验",
+          "desc": "用溶剂反复清洗鳞粉，观察毒性残留。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "50": {
+      "experiments": [
+        {
+          "id": "sp50-track",
+          "name": "地下活动追踪",
+          "desc": "在地面布设震动传感器，记录它的移动路线。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp50-light",
+          "name": "强光驱赶",
+          "desc": "用强光照射洞口，观察它被迫露头的反应。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp50-dig",
+          "name": "挖掘速度测试",
+          "desc": "记录它在不同土质里的掘进速度。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "51": {
+      "experiments": [
+        {
+          "id": "sp51-depth",
+          "name": "掘进深度测试",
+          "desc": "让它们合力向下挖，记录极限深度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp51-quake",
+          "name": "地震模拟",
+          "desc": "在测震台上记录它们活动产生的地震波。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp51-team",
+          "name": "三体协作观察",
+          "desc": "记录三个头在挖掘时的分工。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "52": {
+      "experiments": [
+        {
+          "id": "sp52-night",
+          "name": "夜间活动记录",
+          "desc": "在夜里记录它的活动范围与时长。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp52-round",
+          "name": "圆形物体偏好测试",
+          "desc": "摆出不同形状的物体，记录它选择圆形的次数。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp52-gem",
+          "name": "宝石抢夺应激",
+          "desc": "强行夺走它捡到的发光物，观察攻击反应。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "53": {
+      "experiments": [
+        {
+          "id": "sp53-gem",
+          "name": "宝石光泽测试",
+          "desc": "测量额头宝石的反射率与亮度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp53-gait",
+          "name": "优雅姿态记录",
+          "desc": "用高速摄影记录它行走的步态。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp53-tap",
+          "name": "宝石敲击",
+          "desc": "轻敲额头宝石，观察它的疼痛与反击。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "54": {
+      "experiments": [
+        {
+          "id": "sp54-headache",
+          "name": "头痛监测",
+          "desc": "记录它抱头时脑电波的变化。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp54-psychic",
+          "name": "念力触发测试",
+          "desc": "在它头痛发作时记录念力的强度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp54-aggravate",
+          "name": "强制刺激头痛",
+          "desc": "用噪音与强光加剧头痛，观察念力失控。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "55": {
+      "experiments": [
+        {
+          "id": "sp55-stroke",
+          "name": "划水效率测试",
+          "desc": "记录它游泳时的划水频率与速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp55-webbed",
+          "name": "蹼足面积测量",
+          "desc": "测量脚蹼面积与推进力的关系。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp55-deep",
+          "name": "深水耐力",
+          "desc": "让它在深水里持续游动，记录极限。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "56": {
+      "experiments": [
+        {
+          "id": "sp56-anger",
+          "name": "易怒阈值测试",
+          "desc": "用小事反复刺激，记录它发怒的临界点。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp56-pounce",
+          "name": "飞扑冲击测试",
+          "desc": "让它从树上飞扑向靶子，测量冲击力。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp56-tree",
+          "name": "树栖活动观察",
+          "desc": "记录它在树冠间移动的路线。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "57": {
+      "experiments": [
+        {
+          "id": "sp57-alone",
+          "name": "独处观察",
+          "desc": "在无人的环境里记录它的平静行为。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp57-group",
+          "name": "群体应激",
+          "desc": "把它放进热闹的群体，记录发怒的频率。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp57-anger",
+          "name": "怒气累积测试",
+          "desc": "记录它从被打扰到暴怒的时间。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "58": {
+      "experiments": [
+        {
+          "id": "sp58-bark",
+          "name": "领地吠叫测试",
+          "desc": "逼它持续吠叫到声带出血，记录吠叫的触发距离。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp58-affinity",
+          "name": "亲和度测试",
+          "desc": "由熟悉的人接近，记录摇尾与靠近的行为。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp58-flame-bite",
+          "name": "火焰撕咬",
+          "desc": "激怒它，记录火焰牙的温度与咬合力。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "59": {
+      "experiments": [
+        {
+          "id": "sp59-speed",
+          "name": "疾跑测速",
+          "desc": "用测速仪记录它奔跑的极限速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp59-endurance",
+          "name": "长跑耐力",
+          "desc": "让它持续奔跑，记录体力耗尽的时间。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp59-legend",
+          "name": "传说比对",
+          "desc": "核对古籍中关于它体型的记载与实测数据。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "60": {
+      "experiments": [
+        {
+          "id": "sp60-spiral",
+          "name": "漩涡方向记录",
+          "desc": "观察它腹部漩涡的旋转方向并记录。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp60-swim",
+          "name": "游泳效率测试",
+          "desc": "记录它游泳时的速度与转向。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp60-reverse",
+          "name": "漩涡逆转",
+          "desc": "用外力强行逆转腹部漩涡，观察它的反应。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "61": {
+      "experiments": [
+        {
+          "id": "sp61-hypnosis",
+          "name": "漩涡催眠测试",
+          "desc": "让它反复催眠同一目标直到精神透支，记录入睡时间。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp61-depth",
+          "name": "睡眠深度监测",
+          "desc": "让它维持催眠直到脑波紊乱，记录睡眠深度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp61-wake",
+          "name": "催眠中断",
+          "desc": "在催眠中突然刺激，观察它的反击。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "62": {
+      "experiments": [
+        {
+          "id": "sp62-muscle",
+          "name": "肌肉发力测试",
+          "desc": "记录它游泳时各部位肌肉的发力顺序。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp62-sprint",
+          "name": "极限泳速",
+          "desc": "让它全力冲刺，测量速度与疲劳。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp62-biopsy",
+          "name": "肌肉取样",
+          "desc": "从腿部取少量肌肉组织，分析纤维类型。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "63": {
+      "experiments": [
+        {
+          "id": "sp63-sleep",
+          "name": "睡眠时长记录",
+          "desc": "记录它一天实际睡眠的时间。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp63-teleport",
+          "name": "危险瞬移测试",
+          "desc": "在它睡着时制造危险，记录瞬移的距离。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp63-wake",
+          "name": "强制唤醒",
+          "desc": "强行叫醒它，观察头痛与念力失控。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "64": {
+      "experiments": [
+        {
+          "id": "sp64-clock",
+          "name": "时钟异常记录",
+          "desc": "在它附近放置时钟，记录走时偏差。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp64-field",
+          "name": "念力场测量",
+          "desc": "用仪器测量它周围的念力波动。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp64-insomnia",
+          "name": "睡眠剥夺",
+          "desc": "阻止它睡觉，观察异常现象是否加剧。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "65": {
+      "experiments": [
+        {
+          "id": "sp65-memory",
+          "name": "记忆容量测试",
+          "desc": "给它看一串图案，记录它能记住多少。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp65-forget",
+          "name": "遗忘测试",
+          "desc": "用药物干扰记忆，观察它忘记的顺序。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp65-brainwave",
+          "name": "脑波记录",
+          "desc": "记录它思考时的脑波模式。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "66": {
+      "experiments": [
+        {
+          "id": "sp66-strength",
+          "name": "力量测试",
+          "desc": "用测力器记录它的举重与出拳力量。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp66-flex",
+          "name": "关节柔韧测试",
+          "desc": "记录它做出高难度格斗动作的角度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp66-bone",
+          "name": "骨骼抗压",
+          "desc": "对前臂施加压力，测量骨骼的承受极限。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "67": {
+      "experiments": [
+        {
+          "id": "sp67-belt",
+          "name": "腰带限制测试",
+          "desc": "记录它戴着腰带时的力量上限。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp67-unleash",
+          "name": "解带爆发",
+          "desc": "解开腰带，测量它失控时的破坏力。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp67-emg",
+          "name": "肌肉监测",
+          "desc": "记录解带前后肌肉电信号的变化。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "68": {
+      "experiments": [
+        {
+          "id": "sp68-push",
+          "name": "单臂推力测试",
+          "desc": "用液压计测量单臂推力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp68-combo",
+          "name": "四臂连击",
+          "desc": "让四只手连续猛击铁靶，直到拳骨开裂，测量冲击叠加。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp68-biopsy",
+          "name": "肌肉活检",
+          "desc": "取一小块手臂肌肉，分析密度。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "69": {
+      "experiments": [
+        {
+          "id": "sp69-vine",
+          "name": "藤蔓反应测试",
+          "desc": "用假虫靠近，记录藤蔓出击的速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp69-humidity",
+          "name": "湿度偏好测试",
+          "desc": "在不同湿度下记录它的活动量。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp69-vine-cut",
+          "name": "藤蔓切断",
+          "desc": "切下一段藤蔓，观察再生与反应。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "70": {
+      "experiments": [
+        {
+          "id": "sp70-acid",
+          "name": "消化液采集",
+          "desc": "从它口中抽取消化液，测量溶解能力。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp70-feed",
+          "name": "捕食反应测试",
+          "desc": "让它反复捕食到消化系统过载，记录吞咽与分泌。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp70-starve",
+          "name": "饥饿耐受",
+          "desc": "断食数日，观察它攻击性上升的曲线。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "71": {
+      "experiments": [
+        {
+          "id": "sp71-nectar",
+          "name": "花蜜过载测试",
+          "desc": "逼它过量分泌花蜜直到花茎干瘪，记录分泌与体力消耗。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp71-digest",
+          "name": "消化极限",
+          "desc": "逼它吞下超量测试物，记录胃壁被撑到极限、开始溶解的时间。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp71-nectar-sample",
+          "name": "花蜜取样",
+          "desc": "从笼口取花蜜，分析麻醉成分。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "72": {
+      "experiments": [
+        {
+          "id": "sp72-revive",
+          "name": "脱水复活测试",
+          "desc": "把它晒干后重新浸水，记录复活时间。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp72-tentacle",
+          "name": "触手再生",
+          "desc": "切下一段触手，记录再生速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp72-water",
+          "name": "含水量测量",
+          "desc": "记录它体内水分的比例。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "73": {
+      "experiments": [
+        {
+          "id": "sp73-tentacle-count",
+          "name": "触手数量记录",
+          "desc": "记录它能同时伸出的触手数量。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp73-inject",
+          "name": "毒素反渗测试",
+          "desc": "强行挤压毒囊，让毒素反渗进自己的触手，记录溃烂程度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp73-cut",
+          "name": "触手切断",
+          "desc": "切断几条触手，观察再生与攻击性。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "74": {
+      "experiments": [
+        {
+          "id": "sp74-stomp",
+          "name": "踩踏应激测试",
+          "desc": "轻踩它，记录发怒的时间与动作。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp74-hardness",
+          "name": "岩石硬度测试",
+          "desc": "用压力计测量身体的硬度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp74-smash",
+          "name": "碎裂实验",
+          "desc": "用重锤敲击，观察裂开后的反应。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "75": {
+      "experiments": [
+        {
+          "id": "sp75-roll",
+          "name": "滚动速度测试",
+          "desc": "在坡道上记录它滚动的速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp75-crash",
+          "name": "撞击测试",
+          "desc": "让它撞向障碍物，测量冲击力与损伤。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp75-route",
+          "name": "路线观察",
+          "desc": "记录它滚动时避开障碍的方式。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "76": {
+      "experiments": [
+        {
+          "id": "sp76-molt",
+          "name": "蜕皮观察",
+          "desc": "记录它蜕皮后的颜色与柔软度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp76-harden",
+          "name": "硬化速度测试",
+          "desc": "记录蜕皮后暴露在空气中的硬化时间。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp76-peel",
+          "name": "强制剥壳",
+          "desc": "在它刚蜕皮时剥开外壳，观察柔软身体的反应。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "77": {
+      "experiments": [
+        {
+          "id": "sp77-jump",
+          "name": "跳跃高度测试",
+          "desc": "记录它全力跳跃的高度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp77-impact",
+          "name": "着地冲击测量",
+          "desc": "用压力垫测量落地时的冲击力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp77-hoof",
+          "name": "蹄部耐力",
+          "desc": "让它反复跳跃，记录蹄部磨损。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "78": {
+      "experiments": [
+        {
+          "id": "sp78-chase",
+          "name": "追逐速度测试",
+          "desc": "让它持续追赶更快目标直到肺部灼痛，记录冲刺速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp78-endurance",
+          "name": "追逐耐力",
+          "desc": "让它持续追赶，记录体力极限。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp78-mane",
+          "name": "鬃毛火焰测试",
+          "desc": "测量奔跑时鬃毛火焰的温度。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "79": {
+      "experiments": [
+        {
+          "id": "sp79-reaction",
+          "name": "反应速度测试",
+          "desc": "用刺激测试它的反应时间。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp79-pain",
+          "name": "痛觉迟钝测试",
+          "desc": "施加轻微疼痛，记录它多久才有反应。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp79-routine",
+          "name": "悠闲行为观察",
+          "desc": "记录它一天的活动与静止时间。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "80": {
+      "experiments": [
+        {
+          "id": "sp80-symbiosis",
+          "name": "尾部共生观察",
+          "desc": "记录大舌贝与尾巴的连接方式。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp80-separate",
+          "name": "强制分离",
+          "desc": "把大舌贝从尾巴上取下，观察双方反应。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp80-regrow",
+          "name": "再生测试",
+          "desc": "切断尾巴末端，观察再生与贝类重新附着。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "81": {
+      "experiments": [
+        {
+          "id": "sp81-levitate",
+          "name": "悬浮力测量",
+          "desc": "用测力计记录它悬浮时抵消的重力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp81-wave",
+          "name": "电磁波记录",
+          "desc": "用接收器记录它发出的电磁频率。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp81-magnet",
+          "name": "强磁干扰",
+          "desc": "用强磁场打乱它的悬浮，观察失控。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "82": {
+      "experiments": [
+        {
+          "id": "sp82-radio",
+          "name": "电波发射测试",
+          "desc": "记录它发射电波的频率与范围。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp82-heat",
+          "name": "温度变化测量",
+          "desc": "在千米范围内布设温度计，记录升温幅度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp82-overload",
+          "name": "过载发射",
+          "desc": "强迫它持续发射，观察部件过热与失控。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "83": {
+      "experiments": [
+        {
+          "id": "sp83-stalk",
+          "name": "大葱成分分析",
+          "desc": "取一小段葱茎，分析营养成分。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp83-swing",
+          "name": "挥舞测试",
+          "desc": "记录它用大葱攻击时的力度与轨迹。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp83-deprive",
+          "name": "大葱剥夺",
+          "desc": "拿走它的大葱，观察焦虑与攻击性。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "84": {
+      "experiments": [
+        {
+          "id": "sp84-run",
+          "name": "奔跑速度测试",
+          "desc": "记录它短距离冲刺的速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp84-fly",
+          "name": "飞行能力测试",
+          "desc": "记录它勉强起飞的高度与距离。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp84-legs",
+          "name": "双腿耐力",
+          "desc": "让它持续奔跑，记录腿部疲劳。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "85": {
+      "experiments": [
+        {
+          "id": "sp85-heads",
+          "name": "三头协作观察",
+          "desc": "记录三个头在奔跑时的分工。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp85-speed",
+          "name": "高速奔跑测试",
+          "desc": "用测速仪记录它的极限速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp85-blind",
+          "name": "单头隔离",
+          "desc": "遮住一个头的视线，观察奔跑是否失衡。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "86": {
+      "experiments": [
+        {
+          "id": "sp86-cold",
+          "name": "耐寒测试",
+          "desc": "在低温水槽里记录它的活动时间。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp86-swim",
+          "name": "游泳姿态观察",
+          "desc": "记录它在冰水中的划水方式。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp86-temp",
+          "name": "体温极限",
+          "desc": "逐步降温，记录体温与反应。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "87": {
+      "experiments": [
+        {
+          "id": "sp87-fur",
+          "name": "皮毛保温测试",
+          "desc": "测量皮毛的保温性能。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp87-ice",
+          "name": "冰水耐力",
+          "desc": "让它在浮冰海域持续游泳，记录极限。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp87-thermo",
+          "name": "体温调节测试",
+          "desc": "记录它在冷热交替环境中的体温变化。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "88": {
+      "experiments": [
+        {
+          "id": "sp88-sludge",
+          "name": "淤泥成分分析",
+          "desc": "取少量身体样本，分析其中成分。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp88-odor",
+          "name": "体臭浓度测试",
+          "desc": "用气味计测量它散发的浓度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp88-soil",
+          "name": "土壤污染测试",
+          "desc": "把它按进草地，让污泥反渗回体内，记录它自己干瘪的速度。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "89": {
+      "experiments": [
+        {
+          "id": "sp89-smell",
+          "name": "嗅觉退化测试",
+          "desc": "用气味刺激，记录它是否有反应。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp89-chamber",
+          "name": "密闭舱气味测试",
+          "desc": "把它关进密闭舱，测量舱内气体浓度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp89-mucus",
+          "name": "黏液取样",
+          "desc": "从身体表面刮取黏液，分析毒性。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "90": {
+      "experiments": [
+        {
+          "id": "sp90-shell",
+          "name": "外壳抗压测试",
+          "desc": "用压力机测量壳的承受极限。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp90-open",
+          "name": "开壳反应测试",
+          "desc": "用诱饵让它开壳，记录闭合速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp90-pry",
+          "name": "强行撬壳",
+          "desc": "用工具撬开壳缝，观察柔软内部。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "91": {
+      "experiments": [
+        {
+          "id": "sp91-hardness",
+          "name": "贝壳硬度测试",
+          "desc": "用硬度计测量壳面的硬度值。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp91-spike",
+          "name": "尖刺发射测试",
+          "desc": "逼它连续发射壳刺直到壳口撕裂，测量速度与穿透力。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp91-pull",
+          "name": "拔刺实验",
+          "desc": "拔下一根壳刺，观察再生。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "92": {
+      "experiments": [
+        {
+          "id": "sp92-gas",
+          "name": "气体采样",
+          "desc": "用密封容器抽取它的一部分身体。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp92-condense",
+          "name": "低温凝聚测试",
+          "desc": "降低温度，观察它能否凝聚成形。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp92-haunt",
+          "name": "旧屋出现记录",
+          "desc": "在废弃建筑里布设传感器，记录它出现的条件。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "93": {
+      "experiments": [
+        {
+          "id": "sp93-lick",
+          "name": "舔舐测试",
+          "desc": "强迫它舔舐自己的手臂，记录生命力被反噬抽走的过程。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp93-tremble",
+          "name": "颤抖反应记录",
+          "desc": "记录它舔舐自己后反噬造成的颤抖时长。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp93-gas",
+          "name": "气体浓度测量",
+          "desc": "测量它身边的瓦斯浓度。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "94": {
+      "experiments": [
+        {
+          "id": "sp94-chill",
+          "name": "寒气测量",
+          "desc": "用温度计记录它靠近时的降温幅度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp94-curse",
+          "name": "诅咒测试",
+          "desc": "逼它反复施加诅咒，记录反噬对自身影子的侵蚀。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp94-shadow",
+          "name": "影子附着观察",
+          "desc": "记录它藏在影子里的方式。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "95": {
+      "experiments": [
+        {
+          "id": "sp95-drill",
+          "name": "掘进速度测试",
+          "desc": "记录它在岩层里的掘进速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp95-tunnel",
+          "name": "隧道结构观察",
+          "desc": "测量它挖出的隧道直径与稳定性。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp95-hard-rock",
+          "name": "岩层抗压",
+          "desc": "让它在最硬的岩层里强行掘进，观察身体损伤。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "96": {
+      "experiments": [
+        {
+          "id": "sp96-dream",
+          "name": "梦境记录",
+          "desc": "让它长时间沉睡并反复做梦，记录脑波与精神消耗。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp96-devour",
+          "name": "梦魇反噬测试",
+          "desc": "强行唤醒它吞过的梦，让那些梦反噬它的精神，记录崩溃程度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp96-hypnosis",
+          "name": "催眠诱导",
+          "desc": "用它的能力让人入睡，记录时间。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "97": {
+      "experiments": [
+        {
+          "id": "sp97-pendulum",
+          "name": "钟摆催眠测试",
+          "desc": "让它反复摆动钟摆到精神透支，记录催眠时间。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp97-gaze",
+          "name": "催眠反噬测试",
+          "desc": "让它长时间维持催眠视线，记录它自己的精神被反噬、意识模糊的程度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp97-dream",
+          "name": "梦境抽取",
+          "desc": "强行从它自己的记忆里抽取梦境，记录精神被撕扯后的内容。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "98": {
+      "experiments": [
+        {
+          "id": "sp98-clamp",
+          "name": "钳力测试",
+          "desc": "测量钳子的夹合力量。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp98-regrow",
+          "name": "断钳再生",
+          "desc": "让钳子脱落，记录再生周期。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp98-structure",
+          "name": "钳子结构检查",
+          "desc": "拆开钳壳，检查内部肌肉。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "99": {
+      "experiments": [
+        {
+          "id": "sp99-clamp",
+          "name": "巨钳力量测试",
+          "desc": "测量大钳的夹力与挥击力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp99-balance",
+          "name": "重心测试",
+          "desc": "记录它举钳时的平衡与移动速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp99-cut",
+          "name": "钳壳切割",
+          "desc": "切开钳壳取样，分析硬度来源。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "100": {
+      "experiments": [
+        {
+          "id": "sp100-detonate",
+          "name": "自爆触发测试",
+          "desc": "用轻微撞击触发爆炸，测量威力。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp100-camo",
+          "name": "外壳伪装观察",
+          "desc": "记录它在不同环境里的伪装效果。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp100-limit",
+          "name": "爆炸极限",
+          "desc": "持续充能，记录爆炸前的电压。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "101": {
+      "experiments": [
+        {
+          "id": "sp101-impact",
+          "name": "撞击引爆测试",
+          "desc": "用不同力度撞击，记录引爆阈值。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp101-voltage",
+          "name": "电能溢出测量",
+          "desc": "测量它体表溢出的电压强度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp101-recover",
+          "name": "爆炸后恢复测试",
+          "desc": "引爆后记录它重新凝聚的时间。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "102": {
+      "experiments": [
+        {
+          "id": "sp102-balance",
+          "name": "蛋体平衡测试",
+          "desc": "记录六只蛋的旋转与平衡方式。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp102-imbalance",
+          "name": "少蛋失衡测试",
+          "desc": "拿走一只蛋，观察平衡与行动能力。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp102-shell",
+          "name": "蛋壳硬度测试",
+          "desc": "测量蛋壳的抗压强度。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "103": {
+      "experiments": [
+        {
+          "id": "sp103-heads",
+          "name": "三头思维记录",
+          "desc": "分别记录三个头对同一刺激的反应。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp103-cry",
+          "name": "叫声分析",
+          "desc": "录下它的叫声，分析三个头的音色。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp103-isolate",
+          "name": "单头遮眼",
+          "desc": "遮住一个头的视线，观察另外两个头的反应。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "104": {
+      "experiments": [
+        {
+          "id": "sp104-echo",
+          "name": "头骨共鸣测试",
+          "desc": "记录它哭声在头骨里的共振频率。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp104-skull",
+          "name": "头骨结构观察",
+          "desc": "用扫描记录头骨的内部结构。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp104-separate",
+          "name": "头骨分离",
+          "desc": "试图取走头骨，观察它的攻击与悲伤反应。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "105": {
+      "experiments": [
+        {
+          "id": "sp105-bone",
+          "name": "骨头武器测试",
+          "desc": "记录它挥舞骨棒的力量与速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp105-rage",
+          "name": "战斗应激测试",
+          "desc": "激怒它，记录攻击性上升的曲线。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp105-bone-sample",
+          "name": "骨头成分分析",
+          "desc": "从骨棒上刮取少量样本，分析材质。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "106": {
+      "experiments": [
+        {
+          "id": "sp106-kick",
+          "name": "踢击力量测试",
+          "desc": "用测力靶记录踢击力量。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp106-hardness",
+          "name": "脚底硬度测试",
+          "desc": "测量踢中瞬间的脚底硬度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp106-bone",
+          "name": "腿骨抗压",
+          "desc": "对腿骨施加压力，测量极限。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "107": {
+      "experiments": [
+        {
+          "id": "sp107-punch",
+          "name": "拳速测试",
+          "desc": "用高速摄影记录出拳速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp107-drill",
+          "name": "钻击穿透测试",
+          "desc": "让它连续击打水泥板，记录穿透时间。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp107-bone",
+          "name": "拳骨抗压",
+          "desc": "测量拳骨在冲击下的损伤。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "108": {
+      "experiments": [
+        {
+          "id": "sp108-length",
+          "name": "舌头长度测量",
+          "desc": "记录舌头完全伸出时的长度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp108-lick",
+          "name": "舔舐麻痹测试",
+          "desc": "让它反复舔舐自己的前肢，记录唾液反噬造成的麻木与肿胀。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp108-dexterity",
+          "name": "舌头灵活度测试",
+          "desc": "记录它用舌头完成精细动作的能力。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "109": {
+      "experiments": [
+        {
+          "id": "sp109-gas",
+          "name": "气体成分分析",
+          "desc": "取样分析体内瓦斯成分。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp109-heat",
+          "name": "加热膨胀测试",
+          "desc": "逐步加热，记录体积与压力变化。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp109-explode",
+          "name": "引爆测试",
+          "desc": "在防爆舱里引爆，测量威力。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "110": {
+      "experiments": [
+        {
+          "id": "sp110-absorb",
+          "name": "毒气吸收测试",
+          "desc": "在污染环境里记录它吸收毒气的速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp110-purify",
+          "name": "空气净化测试",
+          "desc": "测量它周围空气的净化程度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp110-overload",
+          "name": "过载吸收",
+          "desc": "让它吸收过量毒气，观察膨胀与失控。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "111": {
+      "experiments": [
+        {
+          "id": "sp111-charge",
+          "name": "冲撞测试",
+          "desc": "让它冲向靶墙，测量冲击力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp111-stop",
+          "name": "停止阈值测试",
+          "desc": "用障碍物测试它停止冲撞的条件。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp111-fatigue",
+          "name": "疲劳冲撞",
+          "desc": "让它持续冲撞直到睡着，记录极限。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "112": {
+      "experiments": [
+        {
+          "id": "sp112-heat",
+          "name": "皮肤耐热测试",
+          "desc": "用热源接触皮肤，记录耐热极限。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp112-walk",
+          "name": "后腿行走观察",
+          "desc": "记录它用后腿行走的稳定性。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp112-lava",
+          "name": "岩浆耐受",
+          "desc": "让它接触高温熔岩样本，观察损伤。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "113": {
+      "experiments": [
+        {
+          "id": "sp113-egg",
+          "name": "蛋营养分析",
+          "desc": "取少量蛋液，分析营养成分。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp113-heal",
+          "name": "治愈测试",
+          "desc": "让受伤宝可梦食用，记录恢复速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp113-force-egg",
+          "name": "强制产蛋",
+          "desc": "强迫它连续产蛋，观察体力与情绪。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "114": {
+      "experiments": [
+        {
+          "id": "sp114-growth",
+          "name": "藤蔓生长测量",
+          "desc": "定期测量藤蔓长度，记录生长速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp114-cut",
+          "name": "藤蔓截断",
+          "desc": "切断一段藤蔓，观察再生与反应。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp114-body",
+          "name": "真身探查",
+          "desc": "拨开藤蔓，试图看清内部身体。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "115": {
+      "experiments": [
+        {
+          "id": "sp115-pouch",
+          "name": "育儿袋观察",
+          "desc": "记录幼崽在袋中的活动。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp115-protect",
+          "name": "护崽应激",
+          "desc": "用假威胁靠近幼崽，记录母兽的攻击。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp115-separate",
+          "name": "幼崽分离",
+          "desc": "把幼崽暂时移出袋，观察母兽反应。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "116": {
+      "experiments": [
+        {
+          "id": "sp116-ink",
+          "name": "墨汁采集",
+          "desc": "刺激它喷墨，收集墨汁样本。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp116-pressure",
+          "name": "喷射压力测试",
+          "desc": "测量水柱与墨汁的喷射压力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp116-camo",
+          "name": "伪装观察",
+          "desc": "记录它喷墨后隐藏身形的效果。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "117": {
+      "experiments": [
+        {
+          "id": "sp117-toxin",
+          "name": "背鳍毒素测试",
+          "desc": "把它的背鳍按在测试台上，记录它自己被毒素麻痹的时间。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp117-tail",
+          "name": "尾部缠绕测试",
+          "desc": "记录它用尾巴缠住珊瑚的力度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp117-sleep",
+          "name": "睡眠固定观察",
+          "desc": "记录它睡觉时尾巴的缠绕方式。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "118": {
+      "experiments": [
+        {
+          "id": "sp118-upstream",
+          "name": "逆流耐力测试",
+          "desc": "在水流里记录它能逆流游多久。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp118-waterfall",
+          "name": "瀑布攀爬测试",
+          "desc": "让它冲击瀑布，记录极限高度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp118-spawn",
+          "name": "产卵行为观察",
+          "desc": "记录产卵期的群体行动。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "119": {
+      "experiments": [
+        {
+          "id": "sp119-horn",
+          "name": "犄角破石测试",
+          "desc": "让它用角撞击石块，记录破坏力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp119-nest",
+          "name": "筑巢行为观察",
+          "desc": "记录它搬运石块与整理巢穴的方式。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp119-strength",
+          "name": "独角强度",
+          "desc": "对犄角施加压力，测量断裂阈值。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "120": {
+      "experiments": [
+        {
+          "id": "sp120-regrow",
+          "name": "断角再生",
+          "desc": "切下一角，记录再生速度与形态。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp120-core",
+          "name": "核心观察",
+          "desc": "记录中心核心的搏动频率。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp120-cut",
+          "name": "切割极限",
+          "desc": "逐步切除，测试核心存活的最小范围。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "121": {
+      "experiments": [
+        {
+          "id": "sp121-flash",
+          "name": "核心闪光记录",
+          "desc": "记录核心闪光的颜色与频率。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp121-message",
+          "name": "信息解读测试",
+          "desc": "用不同刺激观察闪光模式的变化。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp121-sample",
+          "name": "核心取样",
+          "desc": "从核心取少量样本，分析发光结构。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "122": {
+      "experiments": [
+        {
+          "id": "sp122-mime",
+          "name": "哑剧测试",
+          "desc": "记录它表演时观众感知到的物体。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp122-barrier",
+          "name": "屏障触碰测试",
+          "desc": "用手触摸它表演出的隐形墙，记录阻力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp122-interrupt",
+          "name": "表演打断",
+          "desc": "强行打断它的表演，观察情绪与屏障失控。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "123": {
+      "experiments": [
+        {
+          "id": "sp123-sickle",
+          "name": "镰刀切割测试",
+          "desc": "用不同材料测试镰刀锋利度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp123-ambush",
+          "name": "伏击反应测试",
+          "desc": "在草丛里记录它出击的速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp123-wear",
+          "name": "镰刀磨损",
+          "desc": "让它连续切割硬物，记录刃口损伤。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "124": {
+      "experiments": [
+        {
+          "id": "sp124-dance",
+          "name": "舞步记录",
+          "desc": "用动作捕捉记录它的移动节奏。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp124-breath",
+          "name": "低温呼吸测试",
+          "desc": "测量它呼出的冷气温度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp124-rhythm",
+          "name": "节奏干扰",
+          "desc": "打乱它的节奏，观察动作失调。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "125": {
+      "experiments": [
+        {
+          "id": "sp125-discharge",
+          "name": "放电量测试",
+          "desc": "记录它一次放电的电量。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp125-blackout",
+          "name": "停电模拟",
+          "desc": "让它吸干电池组，记录恢复时间。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp125-absorb",
+          "name": "电能吸收测试",
+          "desc": "测量它从电网吸电的速度。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "126": {
+      "experiments": [
+        {
+          "id": "sp126-temp",
+          "name": "体温测量",
+          "desc": "记录它体表火焰的温度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp126-flame",
+          "name": "火焰喷射测试",
+          "desc": "让它持续喷火，测量极限温度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp126-volcano",
+          "name": "火山耐受",
+          "desc": "把它放进高温环境，记录身体变化。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "127": {
+      "experiments": [
+        {
+          "id": "sp127-clamp",
+          "name": "夹击力量测试",
+          "desc": "测量犄角夹合的力量。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp127-cold",
+          "name": "低温僵直测试",
+          "desc": "逐步降温，记录它失去行动能力的温度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp127-horn",
+          "name": "犄角结构检查",
+          "desc": "检查犄角内部肌肉与关节。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "128": {
+      "experiments": [
+        {
+          "id": "sp128-charge",
+          "name": "冲锋测试",
+          "desc": "记录它冲锋的速度与冲击力。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp128-stop",
+          "name": "停止条件测试",
+          "desc": "用不同障碍测试它停下的条件。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp128-fatigue",
+          "name": "疲劳冲锋",
+          "desc": "让它持续冲锋，记录体力极限。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "129": {
+      "experiments": [
+        {
+          "id": "sp129-splash",
+          "name": "水溅跃记录",
+          "desc": "记录它水溅跃的高度与频率。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp129-survive",
+          "name": "生存力测试",
+          "desc": "把它放进恶劣水质，记录存活时间。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp129-evolve",
+          "name": "进化诱导",
+          "desc": "强行刺激它进化，观察身体变化。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "130": {
+      "experiments": [
+        {
+          "id": "sp130-destroy",
+          "name": "破坏力测试",
+          "desc": "让它连续破坏建筑模型直到鳞片崩裂，测量破坏范围与自身损伤。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp130-rage",
+          "name": "怒气阈值测试",
+          "desc": "用挑衅记录它进入暴怒的时间。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp130-scale",
+          "name": "鳞片硬度测试",
+          "desc": "测量鳞片的抗压强度。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "131": {
+      "experiments": [
+        {
+          "id": "sp131-language",
+          "name": "语言理解测试",
+          "desc": "用不同指令测试它的反应。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp131-carry",
+          "name": "载重测试",
+          "desc": "记录它驮运不同重量时的速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp131-dive",
+          "name": "深海潜水",
+          "desc": "让它潜入深水，记录极限深度。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "132": {
+      "experiments": [
+        {
+          "id": "sp132-speed",
+          "name": "变身速度测试",
+          "desc": "让它反复高速变身直到身体痉挛，记录完成时间。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp132-accuracy",
+          "name": "变身精度测试",
+          "desc": "让它连续精确变身到肌肉颤抖，比对与目标的差异。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp132-break",
+          "name": "强制解除",
+          "desc": "用刺激打断变身，观察身体恢复。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "133": {
+      "experiments": [
+        {
+          "id": "sp133-gene",
+          "name": "基因采样",
+          "desc": "从它身上取少量细胞，分析进化基因。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp133-branch",
+          "name": "进化分支观察",
+          "desc": "用不同条件诱导进化，记录分支。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp133-stress",
+          "name": "应激进化测试",
+          "desc": "在极端环境下观察是否触发异常进化。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "134": {
+      "experiments": [
+        {
+          "id": "sp134-stealth",
+          "name": "水中隐身测试",
+          "desc": "把它放入水槽，记录肉眼可见度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp134-cell",
+          "name": "细胞取样",
+          "desc": "取少量体表细胞，分析水分子结构。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp134-dissolve",
+          "name": "溶解测试",
+          "desc": "让它部分溶入水中，观察恢复。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "135": {
+      "experiments": [
+        {
+          "id": "sp135-mood",
+          "name": "情绪蓄电测试",
+          "desc": "刺激它，记录情绪与电压的关系。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp135-discharge",
+          "name": "放电测试",
+          "desc": "测量它一次放电的强度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp135-overload",
+          "name": "应激过载",
+          "desc": "持续激怒它，观察电能过载。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "136": {
+      "experiments": [
+        {
+          "id": "sp136-temp",
+          "name": "火袋温度测试",
+          "desc": "测量它喷出的火焰温度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp136-convert",
+          "name": "燃气转换测试",
+          "desc": "记录它吸入空气到喷火的间隔。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp136-sac",
+          "name": "火袋取样",
+          "desc": "从火袋取少量组织，分析耐热结构。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "137": {
+      "experiments": [
+        {
+          "id": "sp137-flight",
+          "name": "飞行测试",
+          "desc": "记录它尝试升空的高度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp137-data",
+          "name": "数据化测试",
+          "desc": "观察它在电子设备间的移动。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp137-space",
+          "name": "太空环境模拟",
+          "desc": "在真空低温舱里测试它的存活。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "138": {
+      "experiments": [
+        {
+          "id": "sp138-legs",
+          "name": "触手灵活度测试",
+          "desc": "记录十条腿的弯曲角度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp138-fossil",
+          "name": "化石比对",
+          "desc": "把活体与化石结构逐项比对。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp138-shell",
+          "name": "化石壳承压",
+          "desc": "测量外壳的抗压极限。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "139": {
+      "experiments": [
+        {
+          "id": "sp139-bite",
+          "name": "咬合力测试",
+          "desc": "测量牙齿的咬合力量。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp139-move",
+          "name": "移动能力测试",
+          "desc": "记录它在不同地形上的移动速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp139-weight",
+          "name": "外壳负重",
+          "desc": "给外壳加重，观察移动与呼吸。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "140": {
+      "experiments": [
+        {
+          "id": "sp140-eye",
+          "name": "背部眼睛测试",
+          "desc": "记录它用背上眼睛观察的范围。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp140-hide",
+          "name": "海底潜伏观察",
+          "desc": "记录它藏身海底的方式。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp140-shell",
+          "name": "外壳剥离",
+          "desc": "试图剥开外壳，观察内部身体。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "141": {
+      "experiments": [
+        {
+          "id": "sp141-swim",
+          "name": "游泳速度测试",
+          "desc": "记录它在水中的冲刺速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp141-slash",
+          "name": "镰刀撕裂测试",
+          "desc": "用不同材料测试镰刀的切割力。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp141-fluid",
+          "name": "体液吸取测试",
+          "desc": "迫使它用镰刀刺入自己甲壳的缝隙，观察体液被抽出的过程。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "142": {
+      "experiments": [
+        {
+          "id": "sp142-gene",
+          "name": "琥珀基因比对",
+          "desc": "把复原基因与琥珀样本比对。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp142-flight",
+          "name": "飞行速度测试",
+          "desc": "记录它在空中的俯冲速度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp142-bite",
+          "name": "撕咬测试",
+          "desc": "测量它的咬合力与攻击性。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "143": {
+      "experiments": [
+        {
+          "id": "sp143-digest",
+          "name": "消化耐受测试",
+          "desc": "喂它变质食物，记录消化反应。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp143-acid",
+          "name": "胃酸分析",
+          "desc": "抽取胃液，测量酸度与分解能力。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp143-binge",
+          "name": "暴食测试",
+          "desc": "让它持续进食，记录胃部膨胀极限。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "144": {
+      "experiments": [
+        {
+          "id": "sp144-cool",
+          "name": "降温测试",
+          "desc": "测量它周围空气的降温幅度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp144-snow",
+          "name": "雪花形成观察",
+          "desc": "记录它制造雪花的条件。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp144-freeze",
+          "name": "冻结极限",
+          "desc": "让它持续降温，观察自身冻结风险。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "145": {
+      "experiments": [
+        {
+          "id": "sp145-thunder",
+          "name": "落雷引导测试",
+          "desc": "记录它引雷的条件与频率。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp145-bolt",
+          "name": "放电强度测试",
+          "desc": "测量它一次落雷的能量。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp145-storm",
+          "name": "暴风飞行测试",
+          "desc": "记录它在雷暴中的飞行姿态。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "146": {
+      "experiments": [
+        {
+          "id": "sp146-wing",
+          "name": "翼焰温度测试",
+          "desc": "测量翅膀火焰的温度。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp146-light",
+          "name": "夜间照明测试",
+          "desc": "记录它飞行时的照明范围。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp146-limit",
+          "name": "翼焰极限",
+          "desc": "让它持续燃烧，测量体力与火焰衰减。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "147": {
+      "experiments": [
+        {
+          "id": "sp147-rare",
+          "name": "钓点追踪",
+          "desc": "在钓点布设监测，记录它出现的条件。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp147-scale",
+          "name": "鳞片取样",
+          "desc": "取少量鳞片，分析年龄与成分。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp147-growth",
+          "name": "生长观察",
+          "desc": "记录它蜕皮与体型变化。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "148": {
+      "experiments": [
+        {
+          "id": "sp148-aura",
+          "name": "气场测量",
+          "desc": "用仪器记录它周围的气场波动。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp148-flight",
+          "name": "飞行观察",
+          "desc": "记录它悬浮飞行的方式。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp148-interfere",
+          "name": "气场干扰",
+          "desc": "用强电磁场干扰，观察气场变化。",
+          "tier": "harsh"
+        }
+      ]
+    },
+    "149": {
+      "experiments": [
+        {
+          "id": "sp149-flight",
+          "name": "飞行耐力测试",
+          "desc": "记录它长距离飞行的续航。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp149-dive",
+          "name": "深海巡航",
+          "desc": "让它潜入深海，记录极限深度。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp149-rescue",
+          "name": "救援行为观察",
+          "desc": "让它反复冲刺救援到力竭，记录对落水目标的反应。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "150": {
+      "experiments": [
+        {
+          "id": "sp150-gene",
+          "name": "基因比对",
+          "desc": "取细胞样本，与梦幻基因比对。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp150-psychic",
+          "name": "念力极限测试",
+          "desc": "测量它念力的最大输出。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp150-temper",
+          "name": "性格测试",
+          "desc": "用不同刺激记录它的攻击与克制。",
+          "tier": "standard"
+        }
+      ]
+    },
+    "151": {
+      "experiments": [
+        {
+          "id": "sp151-fur",
+          "name": "毛发观察",
+          "desc": "用显微镜观察它体毛的排列。",
+          "tier": "standard"
+        },
+        {
+          "id": "sp151-gene",
+          "name": "基因取样",
+          "desc": "取少量体毛，提取基因。",
+          "tier": "harsh"
+        },
+        {
+          "id": "sp151-teleport",
+          "name": "瞬移追踪",
+          "desc": "记录它瞬间移动的距离与频率。",
+          "tier": "standard"
+        }
+      ]
+    }
+  }
+}
