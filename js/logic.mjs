@@ -1410,7 +1410,7 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
     if (state.log.length > 200) state.log.splice(0, state.log.length - 200);
   }
 
-  // 跨天：经验糖果价格小幅波动；蛋贩子每天自动换货，换货费用随时间回落
+  // 跨天：经验糖果价格小幅波动；蛋贩子每两周自动换货，换货费用随时间回落
   const elapsedDays = state.day - startDay;
   if (elapsedDays > 0) {
     state.marketRerollCost = Math.max(
@@ -1419,7 +1419,7 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
     );
   }
   const today = Math.floor(state.day);
-  if (today > (state.marketDay ?? today)) {
+  if (today - (state.marketDay ?? today) >= CONFIG.marketRefreshIntervalDays) {
     state.marketDay = today;
     refreshMarket(state);
   }

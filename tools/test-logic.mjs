@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import * as L from '../js/logic.mjs';
-import { CONFIG, RANKS, BASE_EXPERIMENTS, EXPERIMENT_TIERS, DEPARTMENTS, BRED_SOURCE, maxTolerance } from '../js/rules.mjs';
+import { CONFIG, RANKS, BASE_EXPERIMENTS, EXPERIMENT_TIERS, DEPARTMENTS, BRED_SOURCE, EGG_SOURCES, maxTolerance } from '../js/rules.mjs';
 import { serialize, deserialize } from '../js/save.mjs';
 import { initDex, initExperiments, initExperimentResults, sp, bst } from '../js/data.mjs';
 
@@ -402,7 +402,8 @@ const nc2 = L.startExperiment(noCdState, noCdMon.uid, noCdHardest.id);
 check(nc1.ok && nc2.ok, '研究完成后连续实验不再被冷却拦住', `(${nc2.msg})`);
 check(L.experimentCooldownFor(noCdState, noCdMon, noCdHardest.id) === 0, '研究完成后不记录冷却');
 
-// ---------- 蛋贩子：每日换货 / 换货费递增并随时间回落 ----------
+// ---------- 蛋贩子：每两周换货 / 换货费递增并随时间回落 ----------
+check(EGG_SOURCES.length === 300 && new Set(EGG_SOURCES).size === 300, '来源描述共 300 条且不重复');
 const shopState = L.newGame(5200);
 shopState.gold = 1000;
 const shopGold = shopState.gold;
@@ -416,10 +417,11 @@ check(nextCost > firstCost, '连续换货费用递增', `(${firstCost}→${nextC
 const marketDayBefore = shopState.marketDay;
 const afterReroll = JSON.stringify(shopState.market);
 L.tick(shopState, 1.1);
-check(shopState.marketDay > marketDayBefore, '跨天后蛋贩子自动换货');
-check(JSON.stringify(shopState.market) !== afterReroll, '市场货物随日期推进更新');
+check(shopState.marketDay === marketDayBefore && JSON.stringify(shopState.market) === afterReroll, '未到两周不自动换货');
 const decayedCost = L.marketRerollCost(shopState);
 check(decayedCost < nextCost, '换货费用随时间回落', `(${nextCost}→${decayedCost})`);
+L.tick(shopState, 13);
+check(shopState.marketDay > marketDayBefore && JSON.stringify(shopState.market) !== afterReroll, '满两周后蛋贩子自动换货');
 
 shopState.gold = 10000;
 const c1 = L.marketRerollCost(shopState);

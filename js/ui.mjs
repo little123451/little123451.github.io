@@ -1032,7 +1032,7 @@ function ensureShop() {
     <div class="section-title" style="margin:2px 0 4px">蛋贩子</div>
     <div class="market-list">${marketHtml || '<div class="empty-tip">蛋贩子手上暂时没货了，花钱让他再跑一趟。</div>'}</div>
     <div class="market-reroll">
-      <span class="hint">每天自动换货；换一批费用会逐次上涨，等待会回落。</span>
+      <span class="hint">每两周（14 天）自动换货；换一批费用会逐次上涨，等待会回落。</span>
       <button id="reroll-market" data-act="reroll-market">换一批 🪙 ${fmt(L.marketRerollCost(S))}</button>
     </div>
     <div class="section-title" style="margin:10px 0 4px">进化道具</div>

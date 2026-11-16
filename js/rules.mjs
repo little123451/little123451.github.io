@@ -58,7 +58,8 @@ export const CONFIG = {
   fightToleranceLoss: 28,
   // 花钱让蛋贩子再送一批蛋
   marketRefreshCost: 60,
-  // 蛋贩子换货：每换一次更贵，但价格会随天数回落；每天自动换货
+  // 蛋贩子换货：每换一次更贵，但价格会随天数回落；每两周自动换货
+  marketRefreshIntervalDays: 14,
   marketRefreshStep: 25,
   marketRefreshDecayPerDay: 8,
   marketRefreshMax: 300,
@@ -120,17 +121,44 @@ export function maxTolerance(mon) {
 }
 
 // ---------- 市场 ----------
-// 蛋的“来源”：符合火箭队做派的进货渠道。来源会跟着这只个体一辈子（暂不展示）
-export const EGG_SOURCES = [
-  '从黑市中间人手里买来',
-  '从走私船的货舱里截下',
-  '从偷猎者的陷阱里抢来',
-  '在地下拍卖会上拍下',
-  '从研究所后门偷偷运出',
-  '从训练家后院中盗取',
-  '从火箭队仓库的积压货里翻出',
-  '从赏金猎人手里收来',
+// 蛋的“来源”：符合火箭队做派的进货渠道。来源会跟着这只个体一辈子。
+// 30 个地点 × 10 种手段 = 300 条完整来源描述。
+const EGG_SOURCE_PLACES = [
+  '黑市中间人手里',
+  '走私船的货舱里',
+  '偷猎者的营地',
+  '地下拍卖会',
+  '研究所后门',
+  '训练家后院',
+  '火箭队仓库的积压货里',
+  '赏金猎人手里',
+  '废弃的培育屋',
+  '边境集市',
+  '地下诊所',
+  '非法繁殖场',
+  '海关扣押仓库',
+  '走私列车车厢',
+  '黑市诊所',
+  '地下仓库',
+  '拍卖行后巷',
+  '走私飞机的行李舱',
+  '荒野偷猎点',
+  '火箭队运输车',
+  '被查封的动物园',
+  '地下斗兽场',
+  '走私客的背包',
+  '偷渡渔船的冷藏舱',
+  '保护区外围',
+  '训练家旅行箱',
+  '非法研究所的冷库',
+  '黑市摊位',
+  '走私码头的集装箱',
+  '雇佣兵的据点',
 ];
+const EGG_SOURCE_ACTIONS = ['弄来', '收来', '带走', '运出', '截下', '买下', '换来', '抢来', '偷出', '扣下'];
+export const EGG_SOURCES = EGG_SOURCE_PLACES.flatMap((place) =>
+  EGG_SOURCE_ACTIONS.map((action) => `从${place}${action}`)
+);
 export const BRED_SOURCE = '培育栏自产';
 
 export const ITEM_PRICES = {
