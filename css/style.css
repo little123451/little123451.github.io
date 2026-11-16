@@ -645,6 +645,36 @@ p {
   gap: 8px;
 }
 
+.slot,
+.lab-card,
+.idle-mon,
+.pick {
+  position: relative;
+}
+
+.mon-no {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  z-index: 2;
+  padding: 1px 3px;
+  border-radius: 4px;
+  background: rgba(5, 10, 18, 0.62);
+  color: rgba(190, 205, 225, 0.72);
+  font-size: 8.5px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.slot.filled.researched,
+.lab-card.researched,
+.idle-mon.researched,
+.pick.researched {
+  background: linear-gradient(180deg, rgba(25, 53, 55, 0.9), rgba(11, 28, 31, 0.88));
+  border-color: rgba(112, 214, 194, 0.3);
+}
+
 .slot {
   min-height: 148px;
   width: 100%;
@@ -969,6 +999,31 @@ p {
   line-height: 1.45;
 }
 
+.idle-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.idle-filters select {
+  flex: 1 1 120px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(9, 16, 28, 0.9);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.idle-filters button {
+  flex: none;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
 .idle-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
@@ -1037,6 +1092,26 @@ p {
   color: var(--muted);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
+}
+
+.idle-mon.dead {
+  border-color: rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(30, 30, 36, 0.9), rgba(13, 14, 18, 0.94));
+}
+
+.idle-mon.dead img {
+  filter: grayscale(1) brightness(0.45);
+}
+
+.idle-mon.dead .n {
+  color: var(--muted);
+}
+
+.idle-mon.dead button {
+  width: 100%;
+  margin-top: 3px;
+  padding: 4px 5px;
+  font-size: 10px;
 }
 
 /* 驻守：暂未启用，只占位 */
@@ -1116,46 +1191,6 @@ p {
 
 .rep-decay.hidden {
   display: none;
-}
-
-.breed-log {
-  display: grid;
-  gap: 6px;
-  max-height: 58dvh;
-  overflow-y: auto;
-}
-
-.breed-fail-row {
-  display: grid;
-  grid-template-columns: 42px 1fr auto;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 9px;
-  border: 1px solid var(--line-soft);
-  border-radius: 9px;
-  background: rgba(10, 18, 30, 0.55);
-  font-size: 11px;
-}
-
-.breed-fail-row .d {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.breed-fail-row .pair {
-  min-width: 0;
-}
-
-.breed-fail-row .pair b {
-  color: #dbe6f5;
-  font-weight: 600;
-}
-
-.breed-fail-row .out {
-  color: #ffb3ba;
-  font-size: 10.5px;
-  text-align: right;
-  white-space: nowrap;
 }
 
 .order.urgent {
@@ -1712,7 +1747,7 @@ p {
 }
 
 .exp-journal-row .d {
-  grid-row: 1 / span 3;
+  grid-row: 1 / -1;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1743,6 +1778,19 @@ p {
 
 .exp-journal-row.dead .res {
   color: #ffb3ba;
+}
+
+.exp-journal-row.completed {
+  border-color: rgba(255, 215, 106, 0.55);
+  background: linear-gradient(180deg, rgba(70, 58, 22, 0.35), rgba(26, 24, 14, 0.4));
+  box-shadow: 0 0 0 1px rgba(255, 215, 106, 0.08) inset;
+}
+
+.exp-journal-row .complete {
+  grid-column: 2;
+  color: #ffd76a;
+  font-size: 10.5px;
+  font-weight: 700;
 }
 
 /* ---------- 弹层 ---------- */
@@ -2033,6 +2081,27 @@ p {
   background: rgba(12, 20, 34, 0.75);
 }
 
+.exp-row.recorded {
+  border-color: rgba(112, 214, 194, 0.26);
+  background: rgba(18, 39, 39, 0.58);
+}
+
+.exp-row.recorded .exp-info b {
+  color: #c8e8df;
+}
+
+.exp-recorded-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 4px;
+  border: 1px solid rgba(112, 214, 194, 0.28);
+  border-radius: 4px;
+  color: #82d8c6;
+  font-size: 9px;
+  font-weight: 400;
+  vertical-align: 1px;
+}
+
 .exp-info b {
   font-size: 12px;
   display: block;
@@ -2094,15 +2163,17 @@ p {
   font-size: 12px;
 }
 
+.exp-loading .exp-loading-desc {
+  max-width: 90%;
+  color: #dbe6f5;
+  font-size: 12.5px;
+  line-height: 1.65;
+  text-align: left;
+}
+
 .exp-loadbar {
   width: min(280px, 100%);
   height: 10px;
-}
-
-.exp-loading-pct {
-  color: #ffd76a;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
 }
 
 .exp-result {
@@ -2128,6 +2199,19 @@ p {
   color: #e6eefc;
   font-size: 14px;
   line-height: 1.65;
+}
+
+.exp-result-death {
+  margin: -4px 0 12px;
+  color: #ff9aa6;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.exp-journal-death {
+  grid-column: 2;
+  color: #ff9aa6;
+  font-size: 10px;
 }
 
 .exp-result-note {

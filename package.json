@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "rocket-simulator",
   "version": "1.0.0",
   "private": true,
@@ -7,6 +7,9 @@
   "scripts": {
     "serve": "node tools/serve.mjs 8123",
     "fetch": "node tools/fetch-data.mjs",
-    "test": "node tools/test-logic.mjs && node tools/test-ui.mjs"
+    "llm:list": "node tools/llm-generate-results.mjs --list",
+    "llm:generate": "node tools/llm-generate-results.mjs --generate",
+    "llm:merge": "node tools/llm-generate-results.mjs --merge",
+    "test": "node tools/test-logic.mjs && node tools/test-ui.mjs && node tools/test-experiments.mjs && node tools/test-results-loader.mjs && node tools/validate-experiments.mjs"
   }
 }

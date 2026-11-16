@@ -1,7 +1,7 @@
 // 数据层：加载 dex.json，提供中文词表与查表工具
 export const DEX = { species: {}, natures: [], count: 0 };
 
-// 自定义实验数据（data/experiments.json），与图鉴数据分开维护
+// 自定义实验数据（data/experiments.json），与研究笔记数据分开维护
 export const EXPERIMENTS_DATA = { species: {} };
 let experimentIndex = new Map();
 
@@ -11,14 +11,6 @@ export function initExperiments(payload) {
   for (const entry of Object.values(EXPERIMENTS_DATA.species)) {
     for (const e of entry.experiments || []) experimentIndex.set(e.id, e);
   }
-}
-
-let EXPERIMENT_RESULTS = {};
-export function initExperimentResults(payload) {
-  EXPERIMENT_RESULTS = payload || {};
-}
-export function experimentResultsFor(expId) {
-  return EXPERIMENT_RESULTS[expId] || null;
 }
 
 export function customExperiments(dexId) {

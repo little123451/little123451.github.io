@@ -1,16 +1,22 @@
 // 逻辑层冒烟测试：模拟 300 天，检查不变量与经济
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import * as L from '../js/logic.mjs';
 import { CONFIG, RANKS, BASE_EXPERIMENTS, EXPERIMENT_TIERS, DEPARTMENTS, BRED_SOURCE, EGG_SOURCES, maxTolerance } from '../js/rules.mjs';
 import { serialize, deserialize } from '../js/save.mjs';
-import { initDex, initExperiments, initExperimentResults, sp, bst } from '../js/data.mjs';
+import { initDex, initExperiments, sp, bst } from '../js/data.mjs';
+import { initBaseResults, seedSpeciesResults } from '../js/results.mjs';
 
 const dex = JSON.parse(await readFile(fileURLToPath(new URL('../data/dex.json', import.meta.url)), 'utf8'));
 initDex(dex);
 const experimentData = JSON.parse(await readFile(fileURLToPath(new URL('../data/experiments.json', import.meta.url)), 'utf8'));
 initExperiments(experimentData);
-initExperimentResults(JSON.parse(await readFile(fileURLToPath(new URL('../data/experiment-results.json', import.meta.url)), 'utf8')));
+initBaseResults(JSON.parse(await readFile(fileURLToPath(new URL('../data/results/base.json', import.meta.url)), 'utf8')));
+for (const file of await readdir(new URL('../data/results/', import.meta.url))) {
+  if (/^\d+\.json$/.test(file)) {
+    seedSpeciesResults(Number(file.replace('.json', '')), JSON.parse(await readFile(new URL(`../data/results/${file}`, import.meta.url), 'utf8')));
+  }
+}
 
 let failures = 0;
 const check = (cond, label, extra = '') => {
@@ -28,6 +34,24 @@ check(state.orders.length === 2, '初始订单');
 check(state.market.length === 3, '初始蛋市场');
 check(state.candies === CONFIG.startCandies, '初始经验糖果', `(${state.candies})`);
 check(state.mons.every((m) => m.tolerance === maxTolerance(m)), '所有个体出厂即带满耐受度');
+
+// 个体编号：出生不编号，首次进入培育栏/实验室才分配
+const noState = L.newGame(9900);
+const [starterA, starterB] = noState.mons;
+check(starterA.no === 1 && starterB.no === 2, '初始培育栏个体已分配编号');
+const unborn = L.createMon(noState, 16, 5, { gender: 'm' });
+noState.mons.push(unborn);
+check(unborn.no == null, '围栏中的新生个体没有编号');
+check(noState.nextMonNo === 3, '未入栏个体不占用编号');
+L.assignPen(noState, 1, 'a', unborn.uid);
+check(unborn.no === 3, '进入培育栏后分配编号');
+const unbornLab = L.createMon(noState, 16, 5, { gender: 'm' });
+noState.mons.push(unbornLab);
+L.assignLab(noState, 0, unbornLab.uid);
+check(unbornLab.no === 4, '进入实验室后分配编号');
+const stillIdle = L.createMon(noState, 16, 5, { gender: 'm' });
+noState.mons.push(stillIdle);
+check(deserialize(serialize(noState)).mons.find((m) => m.uid === stillIdle.uid)?.no == null, '存档保留围栏未编号状态');
 
 // 基础兼容性
 const [a, b] = state.mons;
@@ -89,7 +113,7 @@ for (let i = 0; i < 1200; i++) {
 
 console.log(`\n--- 模拟 300 天后 ---`);
 console.log(`天数=${state.day.toFixed(1)} 金币=${state.gold} 糖果=${state.candies} 声望=${state.rep} 职级=${L.currentRank(state).name}`);
-console.log(`宝可梦=${state.mons.length} 蛋=${state.eggs.length} 订单=${state.orders.length} 已完成图鉴=${state.dex.length}`);
+console.log(`宝可梦=${state.mons.length} 蛋=${state.eggs.length} 订单=${state.orders.length} 已完成研究笔记=${state.dex.length}`);
 console.log(`交付=${delivered} 孵化=${state.stats.hatched} 配种=${state.stats.bred} 争斗=${state.stats.fights} 过期=${state.stats.expired}`);
 console.log(`事件=${totalEvents.length} 进化=${totalEvents.filter((e) => e.type === 'evolve').length} 升级=${totalEvents.filter((e) => e.type === 'level').length}`);
 
@@ -98,7 +122,7 @@ check(state.mons.every((m) => Number.isFinite(m.exp) && Number.isFinite(m.level)
 check(new Set(state.mons.map((m) => m.uid)).size === state.mons.length, 'UID 唯一');
 check(state.eggs.length <= L.eggSlots(state), '蛋位不超上限');
 check(state.orders.length <= L.orderSlots(state), '订单不超上限');
-check(state.dex.length === 0, '未做实验的物种不解锁图鉴', `(${state.dex.length})`);
+check(state.dex.length === 0, '未做实验的物种不解锁研究笔记', `(${state.dex.length})`);
 check(state.mons.every((m) => m.tolerance > 0), '耐受度见底的个体都会在推进中被放生');
 check(totalEvents.some((e) => e.type === 'evolve'), '发生过进化');
 check(delivered > 0, '完成过交付', `(${delivered})`);
@@ -157,7 +181,7 @@ check(customState.gold === goldBeforeCustom - 30, '专属实验扣资金', `(${c
 check(L.experimentCooldown(customState, customMon.uid, 'sp1-fasting') > 0, '专属实验进入冷却');
 const customOther = L.startExperiment(customState, customMon.uid, 'sp1-seed-weight');
 check(customOther.ok, '专属实验冷却互相独立');
-check(L.dexRecordText({ experiments: { 'sp1-fasting': 2, 'sp1-seed-cut': 1 } }) === '断食观察×2 · 切除背上的种子×1', '图鉴记录能显示专属实验名');
+check(L.dexRecordText({ experiments: { 'sp1-fasting': 2, 'sp1-seed-cut': 1 } }) === '断食观察×2 · 切除背上的种子×1', '研究笔记记录能显示专属实验名');
 
 const lab = L.newGame(2025);
 const subject = L.createMon(lab, 16, CONFIG.maxLevel, { origin: 'test', gender: 'm' });
@@ -172,16 +196,18 @@ check(L.sellMon(lab, subject.uid).ok === false, '实验室里的不能出售');
 const gold0 = lab.gold;
 const exp1 = L.startExperiment(lab, subject.uid, 'measure');
 check(exp1.ok && !exp1.released, '基础体测成功');
-check(exp1.result?.survived === true && exp1.result.text.includes('「基础体测」'), '实验返回生还结果文案');
+check(exp1.result?.survived === true && [...exp1.result.text].length > 0, '实验返回生还结果文案', `${[...(exp1.result?.text || '')].length}字`);
 check(lab.expJournal?.[0]?.no === subject.no && lab.expJournal[0].expName === '基础体测', '实验写入个体日志');
 check(exp1.intensity > 0 && exp1.intensity <= 1, '实验返回动效烈度', `(${exp1.intensity})`);
 check(subject.tolerance < maxTolerance(subject), '耐受度下降', `(${subject.tolerance})`);
 check(L.researchProgress(lab, 16) === 2, '研究进度 +2（已下调）');
 check(lab.gold === gold0 - 15, '基础体测不再免费', `(${lab.gold})`);
+check(lab.stats.experimentSpent === 15, '记录实验行为消耗总额');
 check(BASE_EXPERIMENTS.every((e) => e.cost > 0), '没有免费的实验行为');
 
 const exp2 = L.startExperiment(lab, subject.uid, 'sample');
 check(lab.gold === gold0 - 60, '实验扣除资金', `(${lab.gold})`);
+check(lab.stats.experimentSpent === 60, '实验成本累加');
 check(L.researchProgress(lab, 16) === 6, '进度累加');
 
 // 继续实验直到解锁：每个实验行为都要至少做一次（隐藏的 2% 门槛）
@@ -205,10 +231,12 @@ while (!L.isResearched(lab, 16) && guard2 < 400) {
   guard2++;
 }
 check(L.isResearched(lab, 16), '累计进度达到要求');
+const completedLog = (lab.expJournal || []).find((e) => e.completed);
+check(completedLog?.dexId === 16 && completedLog.result.length > 0, '完成研究的实验日志带完成标记');
 check(Object.keys(lab.expCd).length === 0, '研究完成时清空所有实验冷却');
 check(L.experimentCooldownFor(lab, subject, 'sp16-stress-threshold') === 0, '研究完成后不再有冷却');
-check(lab.dex.includes(16), '研究完成后解锁图鉴');
-check(!!lab.dexRecords[16], '完成的图鉴条目留下研究记录');
+check(lab.dex.includes(16), '研究完成后解锁研究笔记');
+check(!!lab.dexRecords[16], '完成的研究笔记条目留下研究记录');
 check((lab.dexRecords[16].experiments.measure || 0) > 0, '记录里包含基础体测');
 check(L.dexRecordText(lab.dexRecords[16]).includes('基础体测'), '研究行为可读', L.dexRecordText(lab.dexRecords[16]));
 check(L.knownEggGroups(lab, 16).length === sp(16).eggGroups.length, '研究完成补全蛋组信息');
@@ -253,7 +281,7 @@ weak.tolerance = 3;
 const goldBefore = lab2.gold;
 const overload = L.startExperiment(lab2, weak.uid, 'sp19-incisor-wear');
 check(overload.ok && overload.released, '超出耐受会放生');
-check(overload.result?.survived === false && overload.result.text.includes('「') && overload.result.text.includes('」'), '超载返回死亡结果文案', overload.result?.text);
+check(overload.result?.survived === false && [...overload.result.text].length > 0, '超载返回死亡结果文案', overload.result?.text);
 check(lab2.expJournal?.[0]?.cause === 'overload' && lab2.expJournal[0].result === overload.result.text, '死亡结果写入实验日志');
 check(Number.isInteger(overload.corpseSlot), '死亡结果带遗体槽位');
 check(overload.msg.includes('断了气'), '超载实验使用死亡文案', overload.msg);
@@ -271,7 +299,7 @@ lab3.expLog = { 16: Object.fromEntries(L.experimentsFor(16).map((e) => [e.id, 1]
 edge.tolerance = L.toleranceLoss(edge, BASE_EXPERIMENTS[0]);
 const exact = L.startExperiment(lab3, edge.uid, 'measure');
 check(exact.released, '耐受归零时放生');
-check(exact.result?.survived === false && exact.result.text.includes('「基础体测」'), '耐受归零返回死亡结果文案', exact.result?.text);
+check(exact.result?.survived === false && [...exact.result.text].length > 0, '耐受归零返回死亡结果文案', exact.result?.text);
 check(exact.corpseSlot === 0 && lab3.expJournal?.[0]?.survived === false, '耐受归零记录遗体与死亡日志');
 check(exact.msg.includes('没能走下实验台'), '耐受归零使用死亡文案', exact.msg);
 check(L.researchProgress(lab3, 16) === 2, '归零前进度已结算');
@@ -287,7 +315,7 @@ check(manualRelease.ok, '可以手动放生');
 check(manualRelease.msg.includes('放生'), '实验室手动离队文案为放生', manualRelease.msg);
 check(lab4.stats.released >= 1, '放生统计 +1');
 
-// 图鉴进度按物种共享
+// 研究笔记进度按物种共享
 const shared = L.newGame(2029);
 const p1 = L.createMon(shared, 16, 5, {});
 const p2 = L.createMon(shared, 16, 5, {});
@@ -455,6 +483,7 @@ sdMon.tolerance = CONFIG.labStruggleThreshold + 1;
 const sdEvents = L.tick(struggleDeath, 40);
 check(L.monByUid(struggleDeath, sdMon.uid) === null, '实验室挣扎耗尽会放生');
 check(!!struggleDeath.lab[0].corpse, '实验室挣扎死亡留下遗体占位');
+check(struggleDeath.expJournal?.[0]?.cause === 'struggle', '实验室挣扎死亡写入日志');
 check(L.researchLostCount(struggleDeath, 16) === 1, '实验室挣扎计入研究损耗');
 check(sdEvents.some((e) => /实验台上挣扎/.test(e.msg)), '实验室挣扎死亡文案', sdEvents.map((e) => e.msg).join(' / '));
 
@@ -483,18 +512,25 @@ check(weakVictim.tolerance === 10, '耐受度低于 10% 的个体不受威胁');
 check(actor.tolerance === maxTolerance(actor) - L.toleranceLoss(actor, L.experimentsFor(1).find((e) => e.id === 'sp1-seed-cut')), '实验者自身不受威胁');
 check(threatRes.events.some((e) => /挣扎/.test(e.msg)), '实验室威胁有提示');
 
-// ---------- 新胜利条件：顶级职级 + 传说研究 ----------
-const legendState = L.newGame(5600);
-legendState.rank = RANKS.length - 1;
-legendState.dex.push(144);
-const legendWin = L.checkVictory(legendState);
-check(legendWin?.type === 'win' && legendState.winKind === 'legendary', '顶级职级完成传说研究触发胜利');
+// ---------- 走到这里：最高职级本身即可收束，不再要求传说研究 ----------
+const topRankState = L.newGame(5600);
+topRankState.rank = RANKS.length - 1;
+const topRankWin = L.checkVictory(topRankState);
+check(topRankWin?.type === 'win' && topRankState.winKind === 'rank', '最高职级直接触发收束，不要求传说宝可梦');
+check(/走到这里|可以结束/.test(topRankWin?.msg || '') || /这条路/.test(topRankWin?.msg || ''), '收束文案不是传统胜负');
 const notTopState = L.newGame(5601);
 notTopState.dex.push(144);
-check(L.checkVictory(notTopState) === null, '非顶级职级不触发传说胜利');
-const noLegendState = L.newGame(5602);
-noLegendState.rank = RANKS.length - 1;
-check(L.checkVictory(noLegendState) === null, '没有传说研究不触发');
+check(L.checkVictory(notTopState) === null, '非最高职级且研究笔记未完成时不触发');
+const dexState = L.newGame(5602);
+dexState.dex = Object.keys(dex.species).map(Number);
+const dexWin = L.checkVictory(dexState);
+check(dexWin?.type === 'win' && dexState.winKind === 'dex', '完成 151 份研究笔记仍可收束');
+const promoteWinState = L.newGame(5603);
+promoteWinState.rank = RANKS.length - 2;
+promoteWinState.rep = 999;
+promoteWinState.gold = 999999;
+const promoteWin = L.promote(promoteWinState);
+check(promoteWin.ok && promoteWin.win?.type === 'win' && promoteWinState.winKind === 'rank', '晋升到最高职级时由逻辑层触发收束');
 
 // ---------- 订单过期：只记录、不播报 ----------
 const expState = L.newGame(3004);
@@ -595,10 +631,19 @@ check(!!dFemaleEgg, '百变怪与雌性也能繁育');
 check(dFemale.tolerance === maxTolerance(dFemale) - CONFIG.breedToleranceCost, '有雌性时仍由雌性承担损耗', `(${dFemale.tolerance})`);
 check(ditto2.tolerance === maxTolerance(ditto2), '这种组合下百变怪不掉耐受度');
 
+// 性冷淡机制已移除：雄性不再有繁育次数上限或相关标记
+const noLimitState = L.newGame(4107);
+const noLimitMale = L.createMon(noLimitState, 16, CONFIG.maxLevel, { gender: 'm' });
+const noLimitFemale = L.createMon(noLimitState, 16, CONFIG.maxLevel, { gender: 'f' });
+check(!('bredEggs' in noLimitMale), '个体不再记录雄性繁育数');
+check(L.sterilityLabel(noLimitMale) === '', '正常雄性没有性冷淡标记');
+check(L.compatibility(noLimitState, noLimitMale, noLimitFemale).ok === true, '正常雄性可继续配种');
+check(L.compatibility(noLimitState, noLimitMale, noLimitFemale).cold === undefined, '兼容性判定不再返回性冷淡状态');
+
 // 条件不符：较弱的一只被放生，另一只掉耐受
 const br3 = L.newGame(4102);
 const strong = L.createMon(br3, 16, 30, { gender: 'm' }); // 波波 Lv30
-const weakMon = L.createMon(br3, 74, 3, { gender: 'm' }); // 小拳石 Lv3，同性别
+const weakMon = L.createMon(br3, 74, 3, { gender: 'f' }); // 小拳石 Lv3，异性但蛋组不匹配
 br3.mons = [strong, weakMon];
 br3.pens = [{ a: strong.uid, b: weakMon.uid, breed: 0 }];
 br3.eggs = [];
@@ -609,9 +654,9 @@ check(strong.tolerance === maxTolerance(strong) - CONFIG.fightToleranceLoss, '�
 check(br3.stats.bred === 0 && br3.eggs.length === 0, '争斗不产蛋');
 check(fightEv.some((e) => e.type === 'warn'), '争斗有警告日志');
 check(fightEv.some((e) => e.msg.includes('伤重不治')), '争斗文案使用死亡表述');
-check(br3.breedFails?.length === 1 && br3.breedFails[0].kind === 'fight' && br3.breedFails[0].loser.dexId === 74, '配对失败写入记录');
-check(L.failedPair(br3, strong.dexId, 74) && L.failedPartners(br3, strong.dexId).has(74), '配对失败关系可查询');
-check(br3.failedPairs?.includes([strong.dexId, 74].sort((x, y) => x - y).join('-')), '失败组合永久记录，不受展示记录上限影响');
+check(!('breedFails' in br3), '不再写入配对失败记录');
+check(L.failedPair(br3, strong.dexId, 74) && L.failedPartners(br3, strong.dexId).has(74), '蛋组不匹配关系可查询');
+check(br3.failedPairs?.includes([strong.dexId, 74].sort((x, y) => x - y).join('-')), '蛋组不匹配组合永久锁定');
 const newGeodude = L.createMon(br3, 74, 5, { gender: 'm' });
 br3.mons.push(newGeodude);
 check(!L.assignPen(br3, 0, 'b', newGeodude.uid).ok, '曾配对失败的物种不能再次同栏');
@@ -623,6 +668,19 @@ check(blockedEvents.some((e) => e.failedPair), '同栏旧状态给出失败提�
 const fightEvent = fightEv.find((e) => e.fight);
 check(fightEvent?.pen === 0, '争斗事件带栏位索引，供 UI 播放撞击动效');
 check(br3.stats.fights === 1, '争斗计数');
+
+// 同性配对引发的争斗不计入配对失败记录
+const sameSexState = L.newGame(4109);
+const ssA = L.createMon(sameSexState, 16, 30, { gender: 'm' });
+const ssB = L.createMon(sameSexState, 16, 3, { gender: 'm' });
+sameSexState.mons = [ssA, ssB];
+sameSexState.pens = [{ a: ssA.uid, b: ssB.uid, breed: 0 }];
+sameSexState.eggs = [];
+sameSexState.market = [];
+L.tick(sameSexState, 3);
+check(L.monByUid(sameSexState, ssB.uid) === null, '同性争斗仍会死亡');
+check(!('breedFails' in sameSexState), '同性争斗不写入失败记录');
+check((sameSexState.failedPairs || []).length === 0, '同性争斗不生成永久失败组合');
 
 // 争斗后耐受见底：剩下那只也会被放生（用满级个体，避免升级回耐受干扰判定）
 const br4 = L.newGame(4103);
@@ -646,7 +704,8 @@ br5.eggs = [];
 const b5ev = L.tick(br5, 3);
 check(br5.eggs.length === 0, '母体撑不住时不产蛋');
 check(L.monByUid(br5, b5f.uid) === null, '母体被放生');
-check(br5.breedFails?.length === 1 && br5.breedFails[0].kind === 'exhausted', '繁育力竭写入失败记录');
+check(!('breedFails' in br5), '繁育力竭不再写入失败记录');
+check((br5.failedPairs || []).length === 0 && !L.failedPair(br5, 16, 21), '力竭不永久锁定物种组合');
 check(b5ev.some((e) => e.type === 'warn' && e.msg.includes('繁育')), '繁育失败有提示');
 
 // 母体损耗节奏：约 3 只后代后被放生（满级个体不升级，只留一个栏位避免后代自己配对）
@@ -674,15 +733,15 @@ L.tick(br6, 4);
 check(br6.mons.length === 2 && b6f.tolerance === maxTolerance(b6f), '孵化器满时既不产蛋也不受伤');
 check(br6.pens[0].breed >= CONFIG.breedDays, '繁育条停在满格等待');
 
-// ---------- 围栏争斗 ----------
+// ---------- 围栏霸凌 ----------
 const idleFight = L.newGame(8200);
 const f1 = L.createMon(idleFight, 16, CONFIG.maxLevel, { gender: 'm' });
 const f2 = L.createMon(idleFight, 16, CONFIG.maxLevel, { gender: 'm' });
 idleFight.mons = [f1, f2];
 const f0 = f1.tolerance;
 L.tick(idleFight, 1);
-check(Math.abs(f0 - f1.tolerance - CONFIG.idleFightRatePerPairDay) < 1e-6, '同种同性两只会持续掉耐受', `(${(f0 - f1.tolerance).toFixed(1)})`);
-check(f2.tolerance === f1.tolerance, '同组掉的量一致');
+check(f1.tolerance === f0 && f2.tolerance === maxTolerance(f2), '同种同性 2 只不触发霸凌');
+check(L.idleConflicts(idleFight).length === 0, '2 只不显示霸凌冲突');
 
 const idleFight3 = L.newGame(8201);
 const g1 = L.createMon(idleFight3, 16, CONFIG.maxLevel, { gender: 'm' });
@@ -691,13 +750,23 @@ const g3 = L.createMon(idleFight3, 16, CONFIG.maxLevel, { gender: 'm' });
 idleFight3.mons = [g1, g2, g3];
 const t3 = g1.tolerance;
 L.tick(idleFight3, 1);
-check(
-  Math.abs(t3 - g1.tolerance - CONFIG.idleFightRatePerPairDay * 3) < 1e-6,
-  '同组数量越多争斗越明显',
-  `(${(t3 - g1.tolerance).toFixed(1)})`
-);
+check(g1.tolerance === t3 && g2.tolerance === maxTolerance(g2) && g3.tolerance === maxTolerance(g3), '同种同性 3 只仍不触发霸凌');
 
-const idleCalm = L.newGame(8202);
+const idleBully = L.newGame(8202);
+const b1 = L.createMon(idleBully, 16, CONFIG.maxLevel, { gender: 'm' });
+const b2 = L.createMon(idleBully, 16, CONFIG.maxLevel, { gender: 'm' });
+const b3 = L.createMon(idleBully, 16, CONFIG.maxLevel, { gender: 'm' });
+const b4 = L.createMon(idleBully, 16, CONFIG.maxLevel, { gender: 'm' });
+b1.tolerance -= 10;
+idleBully.mons = [b1, b2, b3, b4];
+const b1Tol = b1.tolerance;
+L.tick(idleBully, 1);
+check(Math.abs(b1Tol - b1.tolerance - CONFIG.bullyRatePerExtraDay) < 1e-6, '4 只时最弱者被霸凌掉耐受', `(${(b1Tol - b1.tolerance).toFixed(1)})`);
+check([b2, b3, b4].every((m) => m.tolerance === maxTolerance(m)), '霸凌只伤害最弱的那只');
+const bullyConflicts = L.idleConflicts(idleBully);
+check(bullyConflicts.length === 1 && bullyConflicts[0].weakestUid === b1.uid, '冲突信息标记最弱个体');
+
+const idleCalm = L.newGame(8203);
 const h1 = L.createMon(idleCalm, 16, CONFIG.maxLevel, { gender: 'm' });
 const h2 = L.createMon(idleCalm, 16, CONFIG.maxLevel, { gender: 'f' });
 const h3 = L.createMon(idleCalm, 21, CONFIG.maxLevel, { gender: 'm' });
@@ -705,19 +774,33 @@ idleCalm.mons = [h1, h2, h3];
 L.tick(idleCalm, 1);
 check(
   h1.tolerance === maxTolerance(h1) && h2.tolerance === maxTolerance(h2) && h3.tolerance === maxTolerance(h3),
-  '异性或异种不会争斗'
+  '异性或异种不会霸凌'
 );
 
-const idleDie = L.newGame(8203);
+const idleDie = L.newGame(8204);
 const d1 = L.createMon(idleDie, 16, CONFIG.maxLevel, { gender: 'm' });
 const d2 = L.createMon(idleDie, 16, CONFIG.maxLevel, { gender: 'm' });
+const d3 = L.createMon(idleDie, 16, CONFIG.maxLevel, { gender: 'm' });
+const d4 = L.createMon(idleDie, 16, CONFIG.maxLevel, { gender: 'm' });
 d1.tolerance = 1;
-d2.tolerance = 1;
-idleDie.mons = [d1, d2];
+idleDie.mons = [d1, d2, d3, d4];
 const dieEv = L.tick(idleDie, 1);
-check(idleDie.mons.length === 0, '争斗耗尽会被放生');
-check(dieEv.some((e) => e.type === 'warn' && e.msg.includes('争斗')), '争斗致死有专属提示');
-check(L.idleConflicts(idleDie).length === 0, '放生后争斗解除');
+check(L.monByUid(idleDie, d1.uid) === null, '霸凌致死的个体离队');
+check(idleDie.mons.length === 3, '其余三只仍在围栏');
+check(idleDie.idleCorpses?.length === 1 && idleDie.idleCorpses[0].no === d1.no, '霸凌死亡留下遗体');
+check(dieEv.some((e) => e.type === 'warn' && e.msg.includes('霸凌')), '霸凌致死有专属提示');
+check(L.idleConflicts(idleDie).length === 0, '剩 3 只后霸凌解除');
+check((idleDie.expJournal || []).length === 0, '霸凌死亡不计入研究笔记日志');
+const savedIdle = deserialize(serialize(idleDie));
+check(savedIdle.idleCorpses?.length === 1, '存档保留围栏遗体');
+const logLen = idleDie.expJournal.length;
+idleDie.gold = 100;
+const corpseGold = idleDie.gold;
+const idleCorpseRes = L.processIdleCorpse(idleDie, 0);
+check(idleCorpseRes.ok && idleDie.idleCorpses.length === 0, '可以处理围栏遗体');
+check(idleDie.gold === corpseGold - CONFIG.idleCorpseProcessCost, '围栏遗体处理扣费');
+check(idleDie.stats.corpseSpent === CONFIG.idleCorpseProcessCost, '围栏遗体处理计入尸体成本');
+check(idleDie.expJournal.length === logLen, '处理遗体不重复写日志');
 
 // 蛋只能孵出最初形态
 check(L.baseDexId(53) === 52, '猫老大的蛋应为喵喵', `(${L.baseDexId(53)})`);
@@ -959,6 +1042,9 @@ corpseState.gold = 100;
 const goldBeforeCorpse = corpseState.gold;
 const processRes = L.processLabSlot(corpseState, 0);
 check(processRes.ok && corpseState.gold === goldBeforeCorpse - corpseCost, '处理遗体扣费');
+check(corpseState.stats.corpseSpent === corpseCost, '记录遗体处理消耗总额');
+check(corpseState.expJournal?.length === 1 && corpseState.expJournal[0].expName !== '处理', '处理遗体不重复写日志');
+check(L.researchLostCount(corpseState, 16) === 1, '处理遗体不重复计损耗');
 check(!corpseState.lab[0].corpse && L.labOccupied(corpseState) === 0, '处理后实验台空出');
 
 const livingCostState = L.newGame(9501);
@@ -969,6 +1055,18 @@ const costHigh = L.labProcessCost(livingCostState, 0);
 livingMon.tolerance = 1;
 const costLow = L.labProcessCost(livingCostState, 0);
 check(costHigh > costLow, '活体处理费用随剩余耐受度提高', `(${costHigh}→${costLow})`);
+const livingProcess = L.processLabSlot(livingCostState, 0);
+check(livingProcess.ok && L.researchLostCount(livingCostState, 16) === 1, '处理活体计入研究损耗');
+check(livingCostState.expJournal?.[0]?.expName === '处理' && livingCostState.expJournal[0].survived === false, '处理活体写入实验日志');
+
+const doneProcessState = L.newGame(9502);
+const doneProcessMon = L.createMon(doneProcessState, 16, 60, { gender: 'm' });
+doneProcessState.mons.push(doneProcessMon);
+L.assignLab(doneProcessState, 0, doneProcessMon.uid);
+doneProcessState.research[16] = L.researchRequirement(16);
+const doneProcess = L.processLabSlot(doneProcessState, 0);
+check(doneProcess.ok && !doneProcess.logged, '研究满 100% 后处理不再记录');
+check(L.researchLostCount(doneProcessState, 16) === 0 && (doneProcessState.expJournal || []).length === 0, '研究满 100% 后不计损耗、不写日志');
 
 // 闪光 / 不孕不育
 check(CONFIG.shinyChance === 1 / 4096 && CONFIG.sterileChance === 2 / 4096, '闪光 1/4096、不孕不育 2/4096');

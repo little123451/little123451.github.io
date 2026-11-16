@@ -1,15 +1,26 @@
 // 全量实验覆盖：151 个物种、458 条实验逐条执行；同时检查组成、排序、成本、CD、文案与存档。
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import * as L from '../js/logic.mjs';
-import { initDex, initExperiments, initExperimentResults, sp } from '../js/data.mjs';
+import { initDex, initExperiments, sp } from '../js/data.mjs';
+import { initBaseResults, seedSpeciesResults } from '../js/results.mjs';
 import { serialize, deserialize } from '../js/save.mjs';
 
 const dex = JSON.parse(await readFile(fileURLToPath(new URL('../data/dex.json', import.meta.url)), 'utf8'));
 const experiments = JSON.parse(await readFile(fileURLToPath(new URL('../data/experiments.json', import.meta.url)), 'utf8'));
 initDex(dex);
 initExperiments(experiments);
-initExperimentResults(JSON.parse(await readFile(fileURLToPath(new URL('../data/experiment-results.json', import.meta.url)), 'utf8')));
+const baseResults = JSON.parse(await readFile(fileURLToPath(new URL('../data/results/base.json', import.meta.url)), 'utf8'));
+initBaseResults(baseResults);
+const resultData = { ...baseResults };
+let resultFileCount = 0;
+for (const file of await readdir(new URL('../data/results/', import.meta.url))) {
+  if (!/^\d+\.json$/.test(file)) continue;
+  resultFileCount++;
+  const data = JSON.parse(await readFile(new URL(`../data/results/${file}`, import.meta.url), 'utf8'));
+  seedSpeciesResults(Number(file.replace('.json', '')), data);
+  Object.assign(resultData, data);
+}
 
 let failures = 0;
 const check = (ok, label, extra = '') => {
@@ -19,7 +30,6 @@ const check = (ok, label, extra = '') => {
 };
 
 const BASE = new Set(['measure', 'sample', 'battle']);
-const resultData = JSON.parse(await readFile(fileURLToPath(new URL('../data/experiment-results.json', import.meta.url)), 'utf8'));
 const nameById = new Map([
   ['measure', '基础体测'],
   ['sample', '组织采样'],
@@ -31,13 +41,18 @@ let total = 0;
 let executed = 0;
 let seed = 7000;
 
+check(resultFileCount === 151, '物种结果文件按物种拆分', `(${resultFileCount})`);
 check(Object.keys(resultData).length === nameById.size, '每个行为都有独立结果池', `(${Object.keys(resultData).length}/${nameById.size})`);
 for (const [id, name] of nameById) {
   const pool = resultData[id];
   check(pool?.survive?.length === 40 && pool?.death?.length === 10, `${id} 结果池为 40 生还 + 10 死亡`);
   check(new Set(pool?.survive || []).size === 40 && new Set(pool?.death || []).size === 10, `${id} 结果无重复`);
-  check((pool?.survive || []).every((s) => s.includes(`「${name}」`)), `${id} 生还结果包含实验名`);
-  check((pool?.death || []).every((s) => s.includes(`「${name}」`)), `${id} 死亡结果包含实验名`);
+  check((pool?.survive || []).every((s) => String(s).trim().length > 0), `${id} 生还结果非空`);
+  check((pool?.death || []).every((s) => String(s).trim().length > 0), `${id} 死亡结果非空`);
+  check((pool?.survive || []).every((s) => !s.includes(name)), `${id} 生还结果不引用行为名`);
+  check((pool?.death || []).every((s) => !s.includes(name)), `${id} 死亡结果不引用行为名`);
+  check((pool?.survive || []).every((s) => !/四肢|后腿|前肢/.test(s)), `${id} 生还结果不使用肢体专属词`);
+  check((pool?.death || []).every((s) => !/四肢|后腿|前肢/.test(s)), `${id} 死亡结果不使用肢体专属词`);
   check((pool?.survive || []).every((s) => !/呼吸就停|没有反应|死在|断了气|遗体|再没有醒来/.test(s)), `${id} 生还池无死亡文案`);
   check((pool?.death || []).every((s) => !/还活着|没有断气|活着出来/.test(s)), `${id} 死亡池无生还文案`);
 }
@@ -97,19 +112,20 @@ const badTarget = [...byId.values()].filter(
 );
 check(badTarget.length === 0, '高损耗实验不再把伤害写在第三方身上', badTarget.map((e) => e.id).join(','));
 
-// 存档字段：配对失败、闲置计时、胜利类型、个体冷却
+// 存档字段：失败组合锁定、闲置计时、收束类型、个体冷却
 const st = L.newGame(7777);
-st.breedFails = [{ day: 3, a: { dexId: 16, level: 5 }, b: { dexId: 21, level: 5 }, loser: { dexId: 21, level: 5 }, kind: 'fight' }];
+st.failedPairs = ['16-21'];
 st.lastTaskDay = 2;
-st.winKind = 'legendary';
+st.winKind = 'rank';
 st.expCd['u1:measure'] = 5;
 const round = deserialize(serialize(st));
-check(round.breedFails?.length === 1, '存档保留配对失败记录');
+check(round.failedPairs?.includes('16-21'), '存档保留蛋组不匹配锁定');
+check(!('breedFails' in round), '存档不再保留配对失败记录');
 check(round.lastTaskDay === 2, '存档保留闲置计时');
-check(round.winKind === 'legendary', '存档保留胜利类型');
+check(round.winKind === 'rank', '存档保留收束类型');
 check(round.expCd['u1:measure'] === 5, '存档保留个体冷却');
 
-// 图鉴完成补全蛋组
+// 研究笔记完成补全蛋组
 const eggState = L.newGame(7788);
 const eggMon = L.createMon(eggState, 16, 60, { gender: 'm' });
 eggState.mons.push(eggMon);

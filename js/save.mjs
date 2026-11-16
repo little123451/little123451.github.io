@@ -26,10 +26,12 @@ function normalizeState(st) {
   st.inventory = st.inventory || {};
   st.research = st.research || {};
   st.researchLoss = st.researchLoss || {};
-  st.breedFails = st.breedFails || [];
+  delete st.breedFails;
   st.failedPairs = st.failedPairs || [];
   st.dex = st.dex || [];
   st.stats = st.stats || {};
+  st.stats.experimentSpent = Math.max(0, Number(st.stats.experimentSpent) || 0);
+  st.stats.corpseSpent = Math.max(0, Number(st.stats.corpseSpent) || 0);
   st.eggKnown = st.eggKnown || {};
   st.dexRecords = st.dexRecords || {};
   st.expLog = st.expLog || {};
@@ -47,16 +49,38 @@ function normalizeState(st) {
     if (m.tolerance > cap) m.tolerance = cap;
     m.shiny = !!m.shiny;
     m.sterile = !!m.sterile;
+    delete m.bredEggs;
   });
   let nextMonNo = 1;
   st.mons.forEach((m) => {
-    if (!m.no) m.no = nextMonNo;
-    nextMonNo = Math.max(nextMonNo, Number(m.no) + 1 || 1);
+    const no = Number(m.no);
+    if (Number.isInteger(no) && no > 0) {
+      m.no = no;
+      nextMonNo = Math.max(nextMonNo, no + 1);
+    } else {
+      m.no = null;
+    }
   });
   st.nextMonNo = Math.max(Number(st.nextMonNo) || 1, nextMonNo);
+  // 已在培育栏/实验室里的个体必须有编号；围栏里的未编号个体保持未编号
+  const occupied = new Set();
+  for (const p of st.pens || []) {
+    if (p?.a) occupied.add(p.a);
+    if (p?.b) occupied.add(p.b);
+  }
+  for (const slot of st.lab || []) {
+    if (slot?.uid) occupied.add(slot.uid);
+  }
+  let nextAssigned = st.nextMonNo;
+  for (const m of st.mons) {
+    if (!m.no && occupied.has(m.uid)) m.no = nextAssigned++;
+  }
+  st.nextMonNo = nextAssigned;
   st.expJournal = st.expJournal || [];
+  st.idleCorpses = st.idleCorpses || [];
   st.won = !!st.won;
   st.wonDay = st.wonDay ?? null;
+  if (st.winKind === 'legendary') st.winKind = 'rank';
   st.quit = !!st.quit;
   st.quitDay = st.quitDay ?? null;
   return st;

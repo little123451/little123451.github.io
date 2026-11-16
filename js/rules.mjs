@@ -45,8 +45,10 @@ export const CONFIG = {
   // 个体出生时的稀有特质：闪光 1/4096，不孕/不育 2/4096（约为闪光两倍）
   shinyChance: 1 / 4096,
   sterileChance: 2 / 4096,
-  // 围栏争斗：同物种同性别每凑成一对，每只每天额外损耗的耐受度
-  idleFightRatePerPairDay: 3,
+  // 围栏霸凌：同种同性达到 4 只后，最弱者每多 1 只每天额外损耗的耐受度
+  bullyMinGroup: 4,
+  bullyRatePerExtraDay: 3,
+  idleCorpseProcessCost: 6,
   // 实验室挣扎：耐受度高于该值时缓慢下降
   labStruggleThreshold: 70,
   labStrugglePerDay: 2,
@@ -94,7 +96,7 @@ export const rankById = (id) => RANKS[clamp(Math.round(Number(id) || 0), 0, RANK
 export const BASE_EXPERIMENTS = [
   { id: 'measure', name: '基础体测', atk: 10, spa: 10, progress: 2, cost: 10, cd: 5, desc: '量身高、称体重，记录最基础的数据。' },
   { id: 'sample', name: '组织采样', atk: 20, spa: 15, progress: 4, cost: 30, cd: 10, desc: '用钳子从活体上硬扯下一块皮肉或甲壳，伤口不缝合，观察它疼到抽搐。' },
-  { id: 'battle', name: '对战测试', atk: 60, spa: 20, progress: 8, cost: 60, cd: 16, desc: '让训练机反复把它打倒，直到四肢发抖、站不起来，记录还能爬起几次。' },
+  { id: 'battle', name: '对战测试', atk: 60, spa: 20, progress: 8, cost: 60, cd: 16, desc: '让训练机反复把它打倒，直到身体发抖、站不起来，记录还能爬起几次。' },
 ];
 
 export const BASE_FILL_ORDER = ['battle', 'sample', 'measure'];

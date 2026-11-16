@@ -4,3 +4,4 @@ Thumbs.db
 *.log
 tools/shot.png
 .vscode/settings.json
+.env

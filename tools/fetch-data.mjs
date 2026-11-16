@@ -1,4 +1,4 @@
-// 抓取 PokeAPI 第一世代（1-151）图鉴数据，压缩为本地 dex.json
+// 抓取 PokeAPI 第一世代（1-151）研究笔记数据，压缩为本地 dex.json
 // 用法: node tools/fetch-data.mjs
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -63,7 +63,7 @@ function pickZh(names) {
   return pickZhField(names, 'name');
 }
 
-// 第一世代图鉴描述：优先 Let's Go 皮卡丘/伊布（官方简体中文，151 只全覆盖），
+// 第一世代研究笔记描述：优先 Let's Go 皮卡丘/伊布（官方简体中文，151 只全覆盖），
 // 退回剑盾；再不行取红版英文原文。清洗换行、换页符与软连字符。
 function pickFlavor(sp) {
   const entries = sp.flavor_text_entries || [];

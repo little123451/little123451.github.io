@@ -1,23 +1,24 @@
 // 启动：加载数据、读取存档、驱动主循环
-import { initDex, initExperiments, initExperimentResults, DEX } from './data.mjs';
+import { initDex, initExperiments, DEX } from './data.mjs';
+import { initBaseResults } from './results.mjs';
 import { CONFIG, RANKS } from './rules.mjs';
 import { deserialize, loadRaw, persist, clearSave } from './save.mjs';
 import * as L from './logic.mjs';
 import * as UI from './ui.mjs';
 
 async function boot() {
-  // 数据：图鉴 + 定制实验分两个文件维护，启动时一起加载
+  // 数据：研究笔记 + 定制实验 + 基础行为结果；物种专属结果按需加载
   const [dexRes, expRes, resultRes] = await Promise.all([
     fetch('data/dex.json'),
     fetch('data/experiments.json'),
-    fetch('data/experiment-results.json'),
+    fetch('data/results/base.json'),
   ]);
   if (!dexRes.ok) throw new Error(`无法加载 data/dex.json（HTTP ${dexRes.status}）`);
   if (!expRes.ok) throw new Error(`无法加载 data/experiments.json（HTTP ${expRes.status}）`);
-  if (!resultRes.ok) throw new Error(`无法加载 data/experiment-results.json（HTTP ${resultRes.status}）`);
+  if (!resultRes.ok) throw new Error(`无法加载 data/results/base.json（HTTP ${resultRes.status}）`);
   initDex(await dexRes.json());
   initExperiments(await expRes.json());
-  initExperimentResults(await resultRes.json());
+  initBaseResults(await resultRes.json());
 
   // 读档：save.mjs 负责当前/旧存档 key 与迁移标记
   let loaded = { raw: null, migrated: false, error: null };
@@ -64,9 +65,9 @@ async function boot() {
     UI.pushLog('你是年轻的大木博士，被火箭队“请”来管理他们抢来的宝可梦。', 'info');
     UI.pushLog('谁和谁能生出蛋，你一开始并不知道——确认之前，蛋组只会显示 ???。', 'info');
     UI.pushLog('栏位里放两只，繁育条就会走；条件不对的话，它们会打起来。', 'info');
-    UI.pushLog('图鉴不会因为获得而解锁：把宝可梦送进实验室做实验，积累物种研究进度。', 'info');
+    UI.pushLog('研究笔记不会因为获得而解锁：把宝可梦送进实验室做实验，积累物种研究进度。', 'info');
     UI.pushLog('耐受度只有在实验室里才看得见；归零就会被放生。', 'info');
-    UI.pushLog('集齐 151 个物种的图鉴研究即为胜利。想收手，随时可以离开火箭队。', 'info');
+    UI.pushLog('走到最高职级，或完成 151 份研究笔记，这一局就可以收束。想收手，随时可以离开火箭队。', 'info');
   }
 
   // 主循环：真实时间 → 游戏天数

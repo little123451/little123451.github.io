@@ -1,6 +1,7 @@
 // 纯逻辑层：不接触 DOM，可被 Node 直接测试。
 // 规则数据（数值 / 静态表）在 rules.mjs；本文件只负责状态推进与行为。
-import { DEX, sp, bst, growthMultiplier, natureById, STONE_ITEMS, typeZh, ITEM_ZH, eggZh, customExperiments, experimentById, experimentResultsFor } from './data.mjs';
+import { DEX, sp, bst, growthMultiplier, natureById, STONE_ITEMS, typeZh, ITEM_ZH, eggZh, customExperiments, experimentById } from './data.mjs';
+import { resultPoolFor } from './results.mjs';
 import {
   SAVE_VERSION,
   CONFIG,
@@ -81,7 +82,8 @@ export function promote(state) {
   state.stats.spent += next.cost;
   state.rank = next.id;
   state.stats.promotions = (state.stats.promotions || 0) + 1;
-  return { ok: true, msg: `晋升为 ${next.name}`, rank: next };
+  const win = checkVictory(state);
+  return { ok: true, msg: `晋升为 ${next.name}`, rank: next, win };
 }
 
 // ---------- 实验室：研究进度与耐受度 ----------
@@ -94,7 +96,7 @@ export function researchRequirement(dexId) {
 
 export const researchProgress = (state, dexId) => state.research?.[dexId] || 0;
 
-// 该物种在实验室里被实验损耗掉的个体数（用于图鉴记录）
+// 该物种在实验室里被实验损耗掉的个体数（用于研究笔记记录）
 export const researchLostCount = (state, dexId) => state.researchLoss?.[dexId] || 0;
 
 function bumpResearchLoss(state, dexId) {
@@ -221,7 +223,11 @@ export function genderFromRate(state, rate) {
 }
 
 export const genderZh = (g) => ({ m: '♂', f: '♀', x: '—' }[g] || '—');
-export const sterilityLabel = (mon) => (mon?.sterile ? (mon.gender === 'f' ? '不孕' : '不育') : '');
+export const sterilityLabel = (mon) => {
+  if (!mon) return '';
+  if (mon.sterile) return mon.gender === 'f' ? '不孕' : '不育';
+  return '';
+};
 
 // ---------- 宝可梦生成 ----------
 // 每只个体出厂即带满耐受度；但只有进了实验室才会在界面上看到它
@@ -234,11 +240,9 @@ export function createMon(state, dexId, level = 1, opts = {}) {
   const ability = opts.ability ?? pickOne(state, s.abilities);
   const shiny = opts.shiny ?? random(state) < CONFIG.shinyChance;
   const sterile = opts.sterile ?? (gender !== 'x' && random(state) < CONFIG.sterileChance);
-  const no = state.nextMonNo ?? 1;
-  state.nextMonNo = no + 1;
   return {
     uid: uid(state),
-    no,
+    no: null,
     dexId: Number(dexId),
     level,
     exp: 0,
@@ -257,8 +261,15 @@ export function createMon(state, dexId, level = 1, opts = {}) {
   };
 }
 
-export function newGame(seed = (Date.now() % 2147483647) || 7) {
-  const state = {
+function allocateMonNo(state, mon) {
+  if (!mon || mon.no) return mon?.no ?? null;
+  const no = state.nextMonNo ?? 1;
+  mon.no = no;
+  state.nextMonNo = no + 1;
+  return no;
+}
+
+export function newGame(seed = (Date.now() % 2147483647) || 7) {  const state = {
     v: SAVE_VERSION,
     seed,
     day: 1,
@@ -281,21 +292,32 @@ export function newGame(seed = (Date.now() % 2147483647) || 7) {
     research: {},
     // 每个物种在研究过程中被实验损耗掉的个体数
     researchLoss: {},
-    // 最近的配对失败记录（只保留摘要，个体可能已被放生）
-    breedFails: [],
-    // 永久记住曾经失败过的物种组合（与展示用记录分开，避免被上限截断）
+    // 永久记住曾经因蛋组不匹配而失败的物种组合
     failedPairs: [],
     dex: [],
     // 蛋组知识：{ 物种id: ['已确认的蛋组'] }
     eggKnown: {},
-    // 已完成图鉴的研究记录：{ 物种id: { day, experiments } }
+    // 已完成研究笔记的研究记录：{ 物种id: { day, experiments } }
     dexRecords: {},
     // 各物种累计使用过的研究行为
     expLog: {},
     expJournal: [],
+    idleCorpses: [],
     // 实验行为冷却剩余秒数：{ 实验id: 秒 }
     expCd: {},
-    stats: { earned: 0, spent: 0, delivered: 0, expired: 0, bred: 0, hatched: 0, experiments: 0, released: 0, fights: 0 },
+    stats: {
+      earned: 0,
+      spent: 0,
+      delivered: 0,
+      expired: 0,
+      bred: 0,
+      hatched: 0,
+      experiments: 0,
+      experimentSpent: 0,
+      corpseSpent: 0,
+      released: 0,
+      fights: 0,
+    },
     nextId: 1,
     nextMonNo: 1,
     log: [],
@@ -311,6 +333,8 @@ export function newGame(seed = (Date.now() % 2147483647) || 7) {
   state.mons.push(male, female);
   state.pens[0].a = male.uid;
   state.pens[0].b = female.uid;
+  allocateMonNo(state, male);
+  allocateMonNo(state, female);
   refreshMarket(state);
   while (state.orders.length < orderSlots(state)) state.orders.push(makeOrder(state));
   return state;
@@ -400,21 +424,21 @@ export function evolveWithItem(state, mon, plan) {
   return { ok: true, msg: events[0]?.msg || '进化成功', events };
 }
 
-// 胜利条件：集齐第一世代 151 只图鉴
+// “到这里就可以结束”：最高职级，或完成全部 151 份研究笔记。
+// 这不是战胜谁，只是玩家把某一条路走到了自己认可的终点。
 export function checkVictory(state) {
   if (state.won) return null;
   const allSpecies = state.dex.length >= DEX.count;
   const topRank = (state.rank ?? 0) >= RANKS.length - 1;
-  const legend = topRank && state.dex.some((id) => sp(id)?.legendary);
-  if (!allSpecies && !legend) return null;
+  if (!allSpecies && !topRank) return null;
   state.won = true;
   state.wonDay = Math.floor(state.day);
-  state.winKind = allSpecies ? 'dex' : 'legendary';
+  state.winKind = topRank ? 'rank' : 'dex';
   return {
     type: 'win',
-    msg: allSpecies
-      ? '图鉴完成！151 只宝可梦已全部记录在案。'
-      : `你以${RANKS[RANKS.length - 1].name}的身份完成了传说宝可梦的研究，火箭队的野心再无人能挡。`,
+    msg: topRank
+      ? `你走到了${RANKS[RANKS.length - 1].name}的位置。这条路到这里就可以结束了。`
+      : '151 份研究笔记已经补完。这条路到这里就可以结束了。',
   };
 }
 
@@ -437,12 +461,6 @@ export function failedPartners(state, dexId) {
     const [a, b] = String(key).split('-').map(Number);
     if (a === dexId) out.add(b);
     else if (b === dexId) out.add(a);
-  }
-  for (const f of state.breedFails || []) {
-    const a = f.a?.dexId;
-    const b = f.b?.dexId;
-    if (a === dexId && b != null && b !== dexId) out.add(b);
-    else if (b === dexId && a != null && a !== dexId) out.add(a);
   }
   return out;
 }
@@ -467,7 +485,7 @@ export function compatibility(state, a, b) {
   if (!da && !db) {
     if (a.gender === 'x' || b.gender === 'x') return { ok: false, reason: '无性别的宝可梦无法配种' };
     if (a.gender === b.gender) return { ok: false, reason: '需要一雄一雌' };
-    if (!groupsA.some((g) => groupsB.includes(g))) return { ok: false, reason: '蛋组不匹配' };
+    if (!groupsA.some((g) => groupsB.includes(g))) return { ok: false, reason: '蛋组不匹配', code: 'egg-group' };
   }
   return { ok: true, reason: '可以配种' };
 }
@@ -866,6 +884,7 @@ export function assignPen(state, penIdx, slot, uidMon) {
   }
   pen[key] = uidMon;
   pen.breed = 0;
+  allocateMonNo(state, mon);
   return { ok: true, msg: `${sp(mon.dexId).zh} 进入栏位 ${penIdx + 1}` };
 }
 
@@ -887,7 +906,7 @@ function leaveLabCorpse(state, mon, cause) {
   const slot = state.lab[idx];
   const name = sp(mon.dexId).zh;
   slot.uid = null;
-  slot.corpse = { dexId: mon.dexId, level: mon.level, gender: mon.gender, day: Math.floor(state.day), cause };
+  slot.corpse = { dexId: mon.dexId, no: mon.no, level: mon.level, gender: mon.gender, day: Math.floor(state.day), cause };
   state.mons = state.mons.filter((m) => m.uid !== mon.uid);
   for (const p of state.pens) {
     if (p.a === mon.uid) p.a = null;
@@ -907,6 +926,38 @@ export function labProcessCost(state, slotIdx) {
   return CONFIG.labProcessBase + Math.round(tolerance * CONFIG.labProcessPerTolerance);
 }
 
+function leaveIdleCorpse(state, mon) {
+  if (!state.idleCorpses) state.idleCorpses = [];
+  state.idleCorpses.unshift({
+    dexId: mon.dexId,
+    no: mon.no,
+    level: mon.level,
+    gender: mon.gender,
+    day: Math.floor(state.day),
+    cause: 'bully',
+  });
+  if (state.idleCorpses.length > 50) state.idleCorpses.length = 50;
+  state.mons = state.mons.filter((m) => m.uid !== mon.uid);
+  for (const p of state.pens) {
+    if (p.a === mon.uid) p.a = null;
+    if (p.b === mon.uid) p.b = null;
+  }
+  state.stats.released = (state.stats.released || 0) + 1;
+}
+
+
+export function processIdleCorpse(state, index) {
+  const corpse = state.idleCorpses?.[index];
+  if (!corpse) return { ok: false, msg: '这具遗体已经不在了' };
+  const cost = CONFIG.idleCorpseProcessCost;
+  if (state.gold < cost) return { ok: false, msg: `处理需要 ${cost} 资金` };
+  state.gold -= cost;
+  state.stats.spent = (state.stats.spent || 0) + cost;
+  state.stats.corpseSpent = (state.stats.corpseSpent || 0) + cost;
+  state.idleCorpses.splice(index, 1);
+  return { ok: true, msg: `已处理 ${sp(corpse.dexId).zh} 的遗体`, cost };
+}
+
 export function processLabSlot(state, slotIdx) {
   const slot = state.lab[slotIdx];
   if (!slot || (!slot.uid && !slot.corpse)) return { ok: false, msg: '这个实验台是空的' };
@@ -919,9 +970,15 @@ export function processLabSlot(state, slotIdx) {
   if (state.gold < cost) return { ok: false, msg: `处理需要 ${cost} 资金` };
   state.gold -= cost;
   state.stats.spent = (state.stats.spent || 0) + cost;
+  const corpse = !!slot.corpse;
+  if (corpse) state.stats.corpseSpent = (state.stats.corpseSpent || 0) + cost;
+  const dexId = corpse ? slot.corpse.dexId : mon.dexId;
+  const no = corpse ? slot.corpse.no : mon.no;
+  const level = corpse ? slot.corpse.level : mon.level;
+  const tracked = !isResearched(state, dexId);
   let msg;
-  if (slot.corpse) {
-    msg = `已处理 ${sp(slot.corpse.dexId).zh} 的遗体，实验台空出`;
+  if (corpse) {
+    msg = `已处理 ${sp(dexId).zh} 的遗体，实验台空出`;
   } else {
     const name = sp(mon.dexId).zh;
     state.mons = state.mons.filter((m) => m.uid !== mon.uid);
@@ -930,11 +987,13 @@ export function processLabSlot(state, slotIdx) {
       if (p.b === mon.uid) p.b = null;
     }
     state.stats.released = (state.stats.released || 0) + 1;
+    if (tracked) bumpResearchLoss(state, mon.dexId);
     msg = `已处理 ${name}，实验台空出`;
   }
+  if (!corpse && tracked) logLabProcess(state, dexId, no, level);
   slot.uid = null;
   slot.corpse = null;
-  return { ok: true, msg, cost };
+  return { ok: true, msg, cost, logged: !corpse && tracked };
 }
 
 export function assignLab(state, slotIdx, uidMon) {
@@ -947,6 +1006,7 @@ export function assignLab(state, slotIdx, uidMon) {
   if (slot.uid || slot.corpse) return { ok: false, msg: '该实验台已被占用（含死亡个体）' };
   slot.uid = uidMon;
   if (mon.tolerance == null) mon.tolerance = maxTolerance(mon);
+  allocateMonNo(state, mon);
   return { ok: true, msg: `${sp(mon.dexId).zh} 被送进了实验室（只能实验或处理）` };
 }
 
@@ -981,13 +1041,13 @@ function logExperiment(state, dexId, expId) {
 }
 
 function pickExperimentResult(state, exp, survived) {
-  const pool = experimentResultsFor(exp.id);
+  const pool = resultPoolFor(exp.id);
   const arr = survived ? pool?.survive : pool?.death;
   if (Array.isArray(arr) && arr.length) return pickOne(state, arr);
   return survived ? '它活了下来，但伤得很重。' : '它没能撑过这次实验。';
 }
 
-function logExperimentRun(state, mon, exp, survived, result, cause = null) {
+function logExperimentRun(state, mon, exp, survived, result, cause = null, completed = false) {
   if (!state.expJournal) state.expJournal = [];
   state.expJournal.unshift({
     day: Math.floor(state.day),
@@ -999,6 +1059,44 @@ function logExperimentRun(state, mon, exp, survived, result, cause = null) {
     survived,
     result,
     cause,
+    completed: !!completed,
+  });
+  if (state.expJournal.length > 500) state.expJournal.length = 500;
+}
+
+function logLabProcess(state, dexId, no, level) {
+  if (isResearched(state, dexId)) return false;
+  if (!state.expJournal) state.expJournal = [];
+  state.expJournal.unshift({
+    day: Math.floor(state.day),
+    no,
+    dexId,
+    level,
+    expId: 'process',
+    expName: '处理',
+    survived: false,
+    cause: 'processed',
+    result: '它被从实验台上拖走，按流程处理掉了；编号被划掉，实验台重新空了出来。',
+  });
+  if (state.expJournal.length > 500) state.expJournal.length = 500;
+  return true;
+}
+
+function logLabDeath(state, mon, cause) {
+  if (!state.expJournal) state.expJournal = [];
+  state.expJournal.unshift({
+    day: Math.floor(state.day),
+    no: mon.no,
+    dexId: mon.dexId,
+    level: mon.level,
+    expId: 'lab-death',
+    expName: '实验室事故',
+    survived: false,
+    cause,
+    result:
+      cause === 'threat'
+        ? '它被旁边实验的动静吓得拼命挣扎，最后瘫倒在实验台上，没能再起来。'
+        : '它在实验台上挣扎了很久，耐受度一点点耗尽，最后倒了下去。',
   });
   if (state.expJournal.length > 500) state.expJournal.length = 500;
 }
@@ -1048,6 +1146,7 @@ export function startExperiment(state, uidMon, experimentId) {
 
   state.gold -= exp.cost;
   state.stats.spent += exp.cost;
+  state.stats.experimentSpent = (state.stats.experimentSpent || 0) + exp.cost;
   state.stats.experiments = (state.stats.experiments || 0) + 1;
   if (!noCd) {
     if (!state.expCd) state.expCd = {};
@@ -1064,10 +1163,11 @@ export function startExperiment(state, uidMon, experimentId) {
   const capPoints = (researchRequirement(mon.dexId) * Math.max(0, 100 - unperformed * 2)) / 100;
   const gain = Math.max(0, Math.min(exp.progress, capPoints - researchProgress(state, mon.dexId)));
   const res = addResearch(state, mon.dexId, gain);
+  const researchCompleted = !!res.unlocked;
   const name = sp(mon.dexId).zh;
   const events = [];
   if (res.unlocked) {
-    // 图鉴条目完成：冷却全部解除，之后不再有实验 CD
+    // 研究笔记条目完成：冷却全部解除，之后不再有实验 CD
     state.expCd = {};
     if (!state.dexRecords) state.dexRecords = {};
     state.dexRecords[mon.dexId] = {
@@ -1076,7 +1176,7 @@ export function startExperiment(state, uidMon, experimentId) {
       // 这一路研究损耗掉的个体数
       lost: researchLostCount(state, mon.dexId),
     };
-    events.push({ type: 'research', msg: `${name} 的图鉴条目研究完成！` });
+    events.push({ type: 'research', msg: `${name} 的研究完成，研究笔记已记录。` });
   }
   // 高损耗实验：harsh 档，或损耗超过自身耐受上限一定比例，会吓到同实验室的其他个体
   const maxTol = Math.max(1, maxTolerance(mon));
@@ -1092,6 +1192,7 @@ export function startExperiment(state, uidMon, experimentId) {
       scared++;
       if (target.tolerance <= 0) {
         bumpResearchLoss(state, target.dexId);
+        logLabDeath(state, target, 'threat');
         const tname = sp(target.dexId).zh;
         leaveLabCorpse(state, target, 'threat');
         events.push({ type: 'warn', msg: `${tname} 被实验的动静吓得拼命挣扎，瘫倒在实验台上` });
@@ -1105,7 +1206,7 @@ export function startExperiment(state, uidMon, experimentId) {
 
   if (willBeReleased) {
     const resultText = pickExperimentResult(state, exp, false);
-    logExperimentRun(state, mon, exp, false, resultText, 'exhausted');
+    logExperimentRun(state, mon, exp, false, resultText, 'exhausted', researchCompleted);
     const r = leaveLabCorpse(state, mon, 'exhausted');
     events.push({ type: 'warn', msg: `${name} 的耐受度耗尽，倒在了实验台上` });
     return {
@@ -1122,7 +1223,7 @@ export function startExperiment(state, uidMon, experimentId) {
   }
 
   const resultText = pickExperimentResult(state, exp, true);
-  logExperimentRun(state, mon, exp, true, resultText, null);
+  logExperimentRun(state, mon, exp, true, resultText, null, researchCompleted);
   return { ok: true, events, msg: `实验完成（${exp.name}）`, loss, intensity, result: { text: resultText, survived: true } };
 }
 
@@ -1171,16 +1272,12 @@ export function buyUpgrade(state, key) {
 // 培育栏：两只放进去就会开始积累繁育条；满了以后——
 //   · 条件正常：产蛋，承担损耗的一方（雌性；无雌性时是百变怪）掉耐受度
 //   · 条件不正常：两只打架，弱的那只死亡，另一只掉耐受度
-function logBreedFail(state, a, b, loser, kind) {
-  if (!state.breedFails) state.breedFails = [];
-  const snap = (m) => ({ dexId: m.dexId, level: m.level });
-  state.breedFails.unshift({ day: Math.floor(state.day), a: snap(a), b: snap(b), loser: snap(loser), kind });
-  if (state.breedFails.length > 50) state.breedFails.length = 50;
-  if (a.dexId !== b.dexId) {
-    if (!state.failedPairs) state.failedPairs = [];
-    const key = [a.dexId, b.dexId].sort((x, y) => x - y).join('-');
-    if (!state.failedPairs.includes(key)) state.failedPairs.push(key);
-  }
+// 只保留“蛋组不匹配”造成的永久组合锁定；不再记录任何配对失败历史。
+function lockFailedPair(state, a, b) {
+  if (!a || !b || a.dexId === b.dexId) return;
+  if (!state.failedPairs) state.failedPairs = [];
+  const key = [a.dexId, b.dexId].sort((x, y) => x - y).join('-');
+  if (!state.failedPairs.includes(key)) state.failedPairs.push(key);
 }
 
 function resolvePen(state, pen, events, penIndex = null) {
@@ -1214,7 +1311,6 @@ function resolvePen(state, pen, events, penIndex = null) {
     if (bearer.tolerance - CONFIG.breedToleranceCost <= 0) {
       // 承担损耗的一方撑不住这次繁育：本次失败，不产蛋，随后死亡
       const name = sp(bearer.dexId).zh;
-      logBreedFail(state, a, b, bearer, 'exhausted');
       releaseMon(state, bearer.uid, 'exhausted');
       pen.breed = 0;
       events.push({ type: 'warn', msg: `${name} 在繁育中耗尽了耐受度，力竭而死` });
@@ -1243,7 +1339,8 @@ function resolvePen(state, pen, events, penIndex = null) {
   const [weak, strong] = weakerOf(a, b);
   const weakName = sp(weak.dexId).zh;
   const strongName = sp(strong.dexId).zh;
-  logBreedFail(state, a, b, weak, 'fight');
+  // 只有异性且蛋组不匹配才永久锁定组合；同性、力竭等不锁定
+  if (a.gender !== b.gender && comp.code === 'egg-group') lockFailedPair(state, a, b);
   releaseMon(state, weak.uid, 'fight');
   state.stats.fights = (state.stats.fights || 0) + 1;
   pen.breed = 0;
@@ -1276,9 +1373,10 @@ function idleGroups(state) {
 export function idleConflicts(state) {
   const out = [];
   for (const [key, list] of idleGroups(state)) {
-    if (list.length < 2) continue;
+    if (list.length < CONFIG.bullyMinGroup) continue;
     const [dexId, gender] = key.split(':');
-    out.push({ dexId: Number(dexId), gender, count: list.length });
+    const weakest = list.reduce((w, m) => weakerOf(w, m)[0], list[0]);
+    out.push({ dexId: Number(dexId), gender, count: list.length, weakestUid: weakest.uid });
   }
   return out.sort((a, b) => b.count - a.count || a.dexId - b.dexId);
 }
@@ -1363,35 +1461,38 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
     }
   }
 
-  // 围栏争斗：同物种同性别扎堆，数量越多掉得越快（按“对数”叠加）
-  const fightDeaths = new Set();
+  // 围栏霸凌：同种同性达到 4 只后，从第四个起最弱的那只被持续霸凌
+  const bullyDeaths = new Set();
   for (const list of idleGroups(state).values()) {
     const n = list.length;
-    if (n < 2) continue;
-    const loss = CONFIG.idleFightRatePerPairDay * ((n * (n - 1)) / 2) * dtDays;
+    if (n < CONFIG.bullyMinGroup) continue;
+    const weakest = list.reduce((w, m) => weakerOf(w, m)[0], list[0]);
+    const loss = CONFIG.bullyRatePerExtraDay * (n - (CONFIG.bullyMinGroup - 1)) * dtDays;
     if (loss <= 0) continue;
-    for (const mon of list) {
-      mon.tolerance -= loss;
-      if (mon.tolerance <= 0) fightDeaths.add(mon.uid);
-    }
+    weakest.tolerance -= loss;
+    if (weakest.tolerance <= 0) bullyDeaths.add(weakest.uid);
   }
 
-  // 耐受度见底：实验室留下遗体占位，其他位置离队
+  // 耐受度见底：实验室留下遗体占位，霸凌致死留围栏遗体，其他位置离队
   for (const mon of [...state.mons]) {
     if (mon.tolerance <= 0) {
       const name = sp(mon.dexId).zh;
-      const fromFight = fightDeaths.has(mon.uid);
+      if (bullyDeaths.has(mon.uid)) {
+        leaveIdleCorpse(state, mon);
+        events.push({ type: 'warn', msg: `${name} 在围栏里被同类霸凌致死，遗体留在了围栏` });
+        continue;
+      }
       const inLab = labContains(state, mon.uid);
       const inPen = penIndex(state, mon.uid) !== -1;
-      if (inLab) leaveLabCorpse(state, mon, 'struggle');
-      else releaseMon(state, mon.uid, 'exhausted');
-      const msg = fromFight
-        ? `${name} 在围栏的争斗中伤重不治`
-        : inLab
-          ? `${name} 在实验台上挣扎到最后一刻，倒了下去`
-          : inPen
-            ? `${name} 在培育栏里耗尽了耐受度，倒下了`
-            : `${name} 在围栏里耗尽了耐受度，没能撑过去`;
+      if (inLab) {
+        logLabDeath(state, mon, 'struggle');
+        leaveLabCorpse(state, mon, 'struggle');
+      } else releaseMon(state, mon.uid, 'exhausted');
+      const msg = inLab
+        ? `${name} 在实验台上挣扎到最后一刻，倒了下去`
+        : inPen
+          ? `${name} 在培育栏里耗尽了耐受度，倒下了`
+          : `${name} 在围栏里耗尽了耐受度，没能撑过去`;
       events.push({ type: 'warn', msg });
     }
   }
@@ -1465,7 +1566,7 @@ export function revealedStats(state, dexId) {
   return order.slice(0, clamp(count, 0, order.length));
 }
 
-// 图鉴里某个已完成物种的研究记录
+// 研究笔记里某个已完成物种的研究记录
 export function dexRecord(state, dexId) {
   return state.dexRecords?.[dexId] || null;
 }
