@@ -13,6 +13,14 @@ export function initExperiments(payload) {
   }
 }
 
+let EXPERIMENT_RESULTS = {};
+export function initExperimentResults(payload) {
+  EXPERIMENT_RESULTS = payload || {};
+}
+export function experimentResultsFor(expId) {
+  return EXPERIMENT_RESULTS[expId] || null;
+}
+
 export function customExperiments(dexId) {
   return EXPERIMENTS_DATA.species[String(dexId)]?.experiments || null;
 }

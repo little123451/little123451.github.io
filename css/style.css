@@ -35,6 +35,8 @@ body {
 
 body {
   margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
   color: var(--text);
   background:
     radial-gradient(900px 520px at 12% -12%, rgba(124, 156, 255, 0.14), transparent 60%),
@@ -302,9 +304,11 @@ p {
 
 /* ---------- 主滚动区 / TAB 页 ---------- */
 .main {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: 10px 12px calc(var(--tabbar-h) + 22px + env(safe-area-inset-bottom));
   -webkit-overflow-scrolling: touch;
 }
@@ -477,11 +481,14 @@ p {
 
 /* ---------- 底部 TAB 栏 ---------- */
 .tabbar {
-  position: absolute;
+  position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 30;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 2px;
@@ -887,6 +894,67 @@ p {
 .lab-note {
   font-size: 10px;
   color: #ffb3ba;
+}
+
+.lab-card.dead {
+  border-color: rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(30, 30, 36, 0.9), rgba(13, 14, 18, 0.94));
+}
+
+.lab-card.dead .lab-head img {
+  filter: grayscale(1) brightness(0.45);
+}
+
+.lab-card.dead .lab-head .nm {
+  color: var(--muted);
+}
+
+.lab-card.dead .lab-note.dead {
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 107, 122, 0.25);
+  border-radius: 8px;
+  background: rgba(255, 107, 122, 0.06);
+  line-height: 1.5;
+}
+
+.slot.shiny,
+.idle-mon.shiny,
+.lab-card.shiny {
+  border-color: rgba(255, 215, 106, 0.7);
+  box-shadow: 0 0 14px rgba(255, 215, 106, 0.16), 0 0 0 1px rgba(255, 215, 106, 0.12) inset;
+}
+
+.shiny-badge {
+  margin-left: 4px;
+  color: #ffd76a;
+  font-size: 11px;
+  text-shadow: 0 0 8px rgba(255, 215, 106, 0.8);
+}
+
+.sterile-badge {
+  justify-self: start;
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 107, 122, 0.3);
+  border-radius: 999px;
+  color: #ffb3ba;
+  background: rgba(255, 107, 122, 0.08);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.pen-warn {
+  margin-top: 6px;
+  padding: 5px 7px;
+  border: 1px solid rgba(255, 107, 122, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 107, 122, 0.08);
+  color: #ffb3ba;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.pen-warn.hidden {
+  display: none;
 }
 
 /* ---------- 围栏 ---------- */
@@ -1623,6 +1691,60 @@ p {
   white-space: nowrap;
 }
 
+.exp-journal {
+  display: grid;
+  gap: 5px;
+  max-height: 48dvh;
+  overflow: auto;
+}
+
+.exp-journal-row {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  align-items: start;
+  gap: 3px 7px;
+  padding: 7px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(10, 18, 30, 0.42);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.exp-journal-row .d {
+  grid-row: 1 / span 3;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.exp-journal-row .who,
+.exp-journal-row .act,
+.exp-journal-row .res {
+  grid-column: 2;
+}
+
+.exp-journal-row .who {
+  color: #bfd0e8;
+}
+
+.exp-journal-row .act {
+  color: #f5c451;
+}
+
+.exp-journal-row .res {
+  color: var(--muted);
+  min-width: 0;
+}
+
+.exp-journal-row.dead {
+  border-color: rgba(255, 107, 122, 0.24);
+  background: rgba(70, 16, 28, 0.2);
+}
+
+.exp-journal-row.dead .res {
+  color: #ffb3ba;
+}
+
 /* ---------- 弹层 ---------- */
 .modal {
   position: fixed;
@@ -1884,6 +2006,16 @@ p {
   color: var(--muted);
 }
 
+.pick.blocked {
+  opacity: 0.48;
+  border-color: rgba(255, 107, 122, 0.2);
+  cursor: not-allowed;
+}
+
+.pick.blocked .ps {
+  color: #ffb3ba;
+}
+
 /* 实验列表 */
 .exp-list {
   display: grid;
@@ -1941,6 +2073,83 @@ p {
   padding: 6px 10px;
   font-size: 11px;
   border-radius: 9px;
+}
+
+.exp-loading {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 22px 10px 26px;
+  text-align: center;
+}
+
+.exp-loading-icon {
+  font-size: 32px;
+  animation: floaty 1.2s ease-in-out infinite;
+}
+
+.exp-loading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.exp-loadbar {
+  width: min(280px, 100%);
+  height: 10px;
+}
+
+.exp-loading-pct {
+  color: #ffd76a;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.exp-result {
+  padding: 14px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 13px;
+  background: rgba(10, 18, 30, 0.5);
+}
+
+.exp-result.dead {
+  border-color: rgba(255, 107, 122, 0.3);
+  background: rgba(70, 16, 28, 0.28);
+}
+
+.exp-result-meta {
+  color: var(--muted);
+  font-size: 10.5px;
+  margin-bottom: 10px;
+}
+
+.exp-result-text {
+  margin: 0 0 12px;
+  color: #e6eefc;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.exp-result-note {
+  margin-bottom: 10px;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 107, 122, 0.25);
+  border-radius: 8px;
+  color: #ffb3ba;
+  background: rgba(255, 107, 122, 0.07);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.exp-result .actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.exp-result .actions button {
+  flex: 1;
+  min-width: 110px;
 }
 
 /* 职级 */

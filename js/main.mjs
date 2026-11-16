@@ -1,5 +1,5 @@
 // 启动：加载数据、读取存档、驱动主循环
-import { initDex, initExperiments, DEX } from './data.mjs';
+import { initDex, initExperiments, initExperimentResults, DEX } from './data.mjs';
 import { CONFIG, RANKS } from './rules.mjs';
 import { deserialize, loadRaw, persist, clearSave } from './save.mjs';
 import * as L from './logic.mjs';
@@ -7,14 +7,17 @@ import * as UI from './ui.mjs';
 
 async function boot() {
   // 数据：图鉴 + 定制实验分两个文件维护，启动时一起加载
-  const [dexRes, expRes] = await Promise.all([
+  const [dexRes, expRes, resultRes] = await Promise.all([
     fetch('data/dex.json'),
     fetch('data/experiments.json'),
+    fetch('data/experiment-results.json'),
   ]);
   if (!dexRes.ok) throw new Error(`无法加载 data/dex.json（HTTP ${dexRes.status}）`);
   if (!expRes.ok) throw new Error(`无法加载 data/experiments.json（HTTP ${expRes.status}）`);
+  if (!resultRes.ok) throw new Error(`无法加载 data/experiment-results.json（HTTP ${resultRes.status}）`);
   initDex(await dexRes.json());
   initExperiments(await expRes.json());
+  initExperimentResults(await resultRes.json());
 
   // 读档：save.mjs 负责当前/旧存档 key 与迁移标记
   let loaded = { raw: null, migrated: false, error: null };

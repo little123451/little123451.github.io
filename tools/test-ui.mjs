@@ -1,7 +1,7 @@
 // UI 集成测试：用最小 DOM 桩驱动 ui.mjs，检查渲染与交互不抛错
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { initDex, initExperiments, sp, DEX } from '../js/data.mjs';
+import { initDex, initExperiments, initExperimentResults, sp, DEX } from '../js/data.mjs';
 import { CONFIG, RANKS, maxTolerance } from '../js/rules.mjs';
 import * as L from '../js/logic.mjs';
 import * as UI from '../js/ui.mjs';
@@ -10,6 +10,7 @@ const dex = JSON.parse(await readFile(fileURLToPath(new URL('../data/dex.json', 
 initDex(dex);
 const experimentData = JSON.parse(await readFile(fileURLToPath(new URL('../data/experiments.json', import.meta.url)), 'utf8'));
 initExperiments(experimentData);
+initExperimentResults(JSON.parse(await readFile(fileURLToPath(new URL('../data/experiment-results.json', import.meta.url)), 'utf8')));
 
 let failures = 0;
 const check = (cond, label, extra = '') => {
@@ -83,6 +84,7 @@ const state = L.newGame(4242);
 let resetCalls = 0;
 let saveCalls = 0;
 UI.mount(state, { onSave: () => { saveCalls++; }, onReset: () => { resetCalls++; } });
+UI.setExperimentLoading(false);
 check(makeEl('#pens').innerHTML.includes('波波'), '培育栏渲染出波波');
 check(makeEl('#pens').innerHTML.includes('烈雀'), '培育栏渲染出烈雀');
 check(makeEl('#pens').innerHTML.includes('？？？'), '未确认的蛋组显示为 ？？？');
@@ -98,6 +100,46 @@ check(makeEl('#shop').innerHTML.includes('来源：'), '蛋市场显示来源');
 check(!makeEl('#shop').innerHTML.includes('孵化 '), '蛋市场不再显示孵化天数');
 check(makeEl('#shop').innerHTML.includes('item-ico'), '进化道具带图标');
 check(makeEl('#shop').innerHTML.includes('data/items/fire-stone.png'), '道具图标使用游戏内道具像素图');
+
+// 闪光 / 不孕标记
+const specialMon = L.createMon(state, 16, 5, { gender: 'f', shiny: true, sterile: true });
+state.mons.push(specialMon);
+L.assignPen(state, 2, 'a', specialMon.uid);
+UI.render();
+check(makeEl('#pens').innerHTML.includes('shiny'), '闪光个体卡片带闪光样式');
+check(makeEl('#pens').innerHTML.includes('✨'), '闪光个体显示闪光标记');
+check(makeEl('#pens').innerHTML.includes('不孕'), '不孕个体显示不孕标记');
+const normalMale = L.createMon(state, 16, 5, { gender: 'm' });
+state.mons.push(normalMale);
+L.assignPen(state, 2, 'b', normalMale.uid);
+UI.render();
+check(makeEl('#pen-2-warn').textContent.includes('不孕') && makeEl('#pen-2-warn').textContent.includes('无法配种'), '不孕配对显示提示');
+L.removeFromPen(state, normalMale.uid);
+state.mons = state.mons.filter((m) => m.uid !== normalMale.uid);
+click('open-mon', { uid: specialMon.uid });
+check(makeEl('#modal').innerHTML.includes('闪光'), '详情显示闪光');
+check(makeEl('#modal').innerHTML.includes('生育') && makeEl('#modal').innerHTML.includes('不孕'), '详情显示不孕');
+click('close');
+L.removeFromPen(state, specialMon.uid);
+state.mons = state.mons.filter((m) => m.uid !== specialMon.uid);
+UI.render();
+
+// 曾配对失败的物种在选择伙伴时禁用
+const pairA = L.createMon(state, 16, 5, { gender: 'f' });
+const pairB = L.createMon(state, 21, 5, { gender: 'm' });
+state.mons.push(pairA, pairB);
+L.assignPen(state, 2, 'a', pairA.uid);
+state.breedFails = [{ day: 1, a: { dexId: 16, level: 5 }, b: { dexId: 21, level: 5 }, loser: { dexId: 21, level: 5 }, kind: 'fight' }];
+UI.render();
+click('open-picker', { pen: '2', slot: 'b' });
+const blockedBtn = makeEl('#modal').innerHTML.match(new RegExp(`data-uid="${pairB.uid}"[^>]*disabled`));
+check(!!blockedBtn, '曾配对失败的物种按钮禁用');
+check(makeEl('#modal').innerHTML.includes('曾与波波配对失败'), '禁用按钮显示失败原因');
+click('close');
+L.removeFromPen(state, pairA.uid);
+state.mons = state.mons.filter((m) => m.uid !== pairA.uid && m.uid !== pairB.uid);
+state.breedFails = [];
+UI.render();
 
 // 速度按钮、手动保存、底部 TAB
 click('speed', { speed: '2' });
@@ -145,21 +187,25 @@ UI.handleEvents([{ type: 'warn', pen: 0, fight: true, msg: '争斗（测试）' 
 check(makeEl('#pen-0').classList.contains('clash'), '争斗失败时培育栏播放交战动画');
 check(!makeEl('#pen-0').classList.contains('love'), '交战动画替换爱心动画');
 
-// 市场：蛋贩子与花钱换货
-check(makeEl('#shop').innerHTML.includes('蛋贩子'), '市场由蛋贩子供货');
-check(makeEl('#shop').innerHTML.includes('换一批'), '市场提供花钱换货按钮');
+// 蛋贩子与花钱换货
+check(makeEl('#shop').innerHTML.includes('换一批'), '蛋贩子提供花钱换货按钮');
 const shopGoldBefore = state.gold;
+const rerollCost = L.marketRerollCost(state);
 click('reroll-market');
-check(state.gold === shopGoldBefore - CONFIG.marketRefreshCost, '市场换货扣钱', `(${shopGoldBefore}→${state.gold})`);
+check(state.gold === shopGoldBefore - rerollCost, '换货扣钱', `(${shopGoldBefore}→${state.gold})`);
+check(L.marketRerollCost(state) > rerollCost, '换货后下一次费用上涨');
 check(makeEl('#shop').innerHTML.includes('来源：'), '换货后仍显示来源');
 check(makeEl('#shop').innerHTML.includes('来源：从') || makeEl('#shop').innerHTML.includes('来源：在'), '来源为完整描述');
-
-// 驻守占位
+check(makeEl('#shop').innerHTML.includes(`🪙 ${L.marketRerollCost(state)}`), '换货按钮显示新的递增费用');
 const indexHtml = await readFile(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8');
+check(indexHtml.includes('<h3>蛋贩子</h3>'), '经营栏标题改为蛋贩子');
 check((indexHtml.match(/驻守位/g) || []).length === 4, '围栏页有四个驻守位');
 check(indexHtml.includes('暂未启用'), '驻守位暂未启用');
 const cssText = await readFile(fileURLToPath(new URL('../css/style.css', import.meta.url)), 'utf8');
 check(/\.orders\s*\{[^}]*height:\s*340px/s.test(cssText), '部门需求框体固定高度');
+check(/\.tabbar\s*\{[^}]*position:\s*fixed/s.test(cssText), '底部栏固定到视口');
+check(/\.tabbar\s*\{[^}]*max-width:\s*760px/s.test(cssText), '底部栏与主容器同宽');
+check(/body\s*\{[^}]*overflow:\s*hidden/s.test(cssText), '页面自身不产生滚动，内容区独立滚动');
 for (const key of ['heartPop', 'clashPop', 'labHit', 'idleFightPulse', 'boardShine']) {
   check(cssText.includes(`@keyframes ${key}`), `动效关键帧存在：${key}`);
 }
@@ -213,6 +259,16 @@ check(!makeEl('#idle').innerHTML.includes('小拳石'), '进入培育栏后离�
 L.removeFromPen(state, idler.uid);
 UI.render();
 check(makeEl('#idle').innerHTML.includes('小拳石'), '移出培育栏后回到围栏');
+
+// 培育栏详情点“移出栏位”后直接收起，不再展示详情
+L.assignPen(state, 1, 'a', idler.uid);
+UI.render();
+click('open-mon', { uid: idler.uid });
+click('unassign', { uid: idler.uid });
+check(L.penIndex(state, idler.uid) === -1, '移出栏位生效');
+check(makeEl('#modal').innerHTML === '', '移出栏位后直接收起详情');
+UI.render();
+check(makeEl('#idle').innerHTML.includes('小拳石'), '移出后回到围栏');
 
 // 围栏个体详情：不再提供“放入栏位”快捷按钮，改从培育栏空位进入
 click('open-mon', { uid: idler.uid });
@@ -286,6 +342,7 @@ check(state.candies > 12 && state.gold < gold0, '买经验糖果生效', `(${gol
 const starter = state.mons[0];
 click('open-mon', { uid: starter.uid });
 check(makeEl('#modal').innerHTML.includes('能力值'), '详情弹窗含能力值');
+check(!makeEl('#modal').innerHTML.includes('特性'), '详情弹窗暂不展示特性');
 check(makeEl('#modal').innerHTML.includes('已披露 0/6'), '未研究的物种能力值未披露');
 check(!makeEl('#modal').innerHTML.includes('个体值'), '详情弹窗不展示个体值');
 check(makeEl('#modal').innerHTML.includes('进化路线'), '详情弹窗含进化路线');
@@ -383,7 +440,7 @@ click('assign-lab', { slot: '1', uid: labMon.uid });
 check(L.labContains(state, labMon.uid), '选中即放入实验室');
 UI.render();
 check(makeEl('#lab').innerHTML.includes('实验'), '实验室卡片有实验入口');
-check(makeEl('#lab').innerHTML.includes('放生'), '实验栏提供真实放生按钮');
+check(makeEl('#lab').innerHTML.includes('处理'), '实验栏提供付费处理按钮');
 check(makeEl('#lab').innerHTML.includes('耐受度'), '实验室卡片显示耐受度');
 check(makeEl('#lab-1-tol').textContent.includes('/'), '耐受度显示上限（与等级挂钩）', makeEl('#lab-1-tol').textContent);
 check(makeEl('#lab').innerHTML.includes('bar study'), '研究进度条使用独立样式类');
@@ -401,11 +458,13 @@ const goldBeforeExp = state.gold;
 click('run-exp', { uid: labMon.uid, exp: 'sample' });
 check(state.gold === goldBeforeExp - 45, '执行实验扣资金', `(${goldBeforeExp}→${state.gold})`);
 check(L.researchProgress(state, 16) > 0, '实验增加物种研究进度');
-check(makeEl('#modal').classList.contains('hidden'), '实验后收起实验选择框');
+check(makeEl('#modal').innerHTML.includes('实验结束') && makeEl('#modal').innerHTML.includes('组织采样'), '实验后展示生还结果卡');
 check(makeEl('#lab-1').classList.contains('experiment-hit'), '实验对象播放命中反馈动画');
 check(Number(makeEl('#lab-1').style['--hit']) > 0, '命中动画带强度参数', makeEl('#lab-1').style['--hit']);
 const resBar = makeEl('#lab-1-resbar');
 check(resBar.style.width && resBar.style.width !== '0.0%', '研究进度条随实验更新', resBar.style.width);
+click('close');
+check(makeEl('#modal').classList.contains('hidden'), '结果卡可收起');
 click('open-exp', { uid: labMon.uid });
 UI.render();
 check(makeEl('#modal').innerHTML.includes('冷却 10 秒'), '实验弹窗显示冷却时间');
@@ -425,19 +484,48 @@ check(makeEl('#modal').innerHTML.includes('不再受冷却限制'), '研究满�
 click('close');
 
 click('open-mon', { uid: labMon.uid });
-check(makeEl('#modal').innerHTML.includes('实验中（无法取出）'), '详情显示实验室状态');
+check(makeEl('#modal').innerHTML.includes('实验中（只能处理）'), '详情显示实验室状态');
 check(makeEl('#modal').innerHTML.includes('耐受度'), '详情中的耐受度仅在实验室可见');
 check(!makeEl('#modal').innerHTML.includes('出售'), '实验室宝可梦没有出售按钮');
 check(!makeEl('#modal').innerHTML.includes('喂经验糖果'), '实验室宝可梦不能喂食');
 click('close');
 
-// 放生不再二次确认
-click('release-mon', { uid: labMon.uid });
-check(L.monByUid(state, labMon.uid) === null, '放生立即生效（无二次确认）');
-check(L.researchProgress(state, 16) > 0, '放生后研究进度保留');
+// 处理活体：按剩余耐受度收费，立即空出实验台
+const processCost = L.labProcessCost(state, 1);
+const goldBeforeProcess = state.gold;
+click('process-lab', { slot: '1' });
+check(L.monByUid(state, labMon.uid) === null, '处理活体立即生效');
+check(state.gold === goldBeforeProcess - processCost, '处理活体扣费', `(${goldBeforeProcess}→${state.gold}/${processCost})`);
+check(state.lab[1].uid === null && !state.lab[1].corpse, '处理后实验台空出');
+check(L.researchProgress(state, 16) > 0, '处理后研究进度保留');
+
+// 实验死亡 → 遗体占位 → 付费处理
+const labDead = L.createMon(state, 16, 5, { gender: 'm' });
+state.mons.push(labDead);
+L.assignLab(state, 1, labDead.uid);
+labDead.tolerance = 1;
+state.gold = 1000;
+UI.render();
+click('run-exp', { uid: labDead.uid, exp: 'sp16-stress-threshold' });
+check(makeEl('#modal').innerHTML.includes('实验事故') && makeEl('#modal').innerHTML.includes('处理遗体'), '死亡结果卡提供处理遗体按钮');
+check(L.monByUid(state, labDead.uid) === null, '实验死亡后个体移除');
+check(!!state.lab[1].corpse, '实验死亡后留下遗体并占用实验台');
+check(makeEl('#lab').innerHTML.includes('已死亡'), '实验室卡片显示死亡状态');
+state.gold = 0;
+click('close');
+check(makeEl('#modal').classList.contains('hidden'), '资金不足时也能关闭死亡结果卡');
+state.gold = 100;
+UI.render();
+const corpseCost = L.labProcessCost(state, 1);
+const goldBeforeCorpse = state.gold;
+click('process-lab', { slot: '1' });
+check(!state.lab[1].corpse, '处理遗体后实验台空出');
+check(state.gold === goldBeforeCorpse - corpseCost, '处理遗体扣费', `(${corpseCost})`);
 
 click('open-dex');
 check(makeEl('#dex-page').innerHTML.includes('%') || makeEl('#dex-page').innerHTML.includes('完成'), '图鉴显示研究进度');
+check(makeEl('#dex-page').innerHTML.includes('实验日志'), '图鉴显示实验日志区');
+check(makeEl('#dex-page').innerHTML.includes('组织采样') || makeEl('#dex-page').innerHTML.includes('对战测试'), '实验日志包含行为记录');
 click('tab', { tab: 'pens' });
 
 // 图鉴显示规则：研究中灰度、完成彩色、显示研究损耗
@@ -524,6 +612,22 @@ click('open-help');
 UI.setState(L.newGame(999));
 check(makeEl('#modal').innerHTML === '' && makeEl('#modal').classList.contains('hidden'), 'setState 清空并关闭弹窗');
 check(!makeEl('#log').innerHTML.includes('测试日志'), 'setState 清空旧日志');
+
+// 加载条 → 结果卡
+const loadingState = L.newGame(123456);
+const loadingMon = L.createMon(loadingState, 16, 8, { gender: 'm' });
+loadingState.mons.push(loadingMon);
+L.assignLab(loadingState, 0, loadingMon.uid);
+UI.setState(loadingState);
+UI.render();
+UI.setExperimentLoading(true, 40);
+click('run-exp', { uid: loadingMon.uid, exp: 'measure' });
+check(makeEl('#modal').innerHTML.includes('正在') && makeEl('#modal').innerHTML.includes('基础体测'), '实验加载条提示正在进行的实验');
+await new Promise((resolve) => setTimeout(resolve, 120));
+check(makeEl('#modal').innerHTML.includes('实验结束'), '加载结束后展示实验结果卡');
+check(loadingState.gold < 1800, '加载完成后结算实验');
+UI.setExperimentLoading(false);
+click('close');
 
 console.log(`\n${failures === 0 ? 'UI 测试全部通过 ✓' : `${failures} 项失败 ✗`}`);
 process.exit(failures ? 1 : 0);

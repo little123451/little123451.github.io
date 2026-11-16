@@ -11,14 +11,23 @@ const defaultUpgrades = () => ({ incubator: 0, feeder: 0, advertising: 0, traini
 function normalizeState(st) {
   st.v = SAVE_VERSION;
   st.pens = st.pens || [];
-  st.lab = st.lab || [];
+  st.lab = (st.lab || []).map((slot) => {
+    const s = slot && typeof slot === 'object' ? slot : { uid: null };
+    return { uid: s.uid ?? null, ...(s.corpse ? { corpse: s.corpse } : {}) };
+  });
   st.eggs = st.eggs || [];
   st.orders = st.orders || [];
   st.market = st.market || [];
+  st.marketDay = st.marketDay ?? Math.floor(st.day ?? 1);
+  st.marketRerollCost = Math.max(
+    CONFIG.marketRefreshCost,
+    Math.min(CONFIG.marketRefreshMax, Number(st.marketRerollCost) || CONFIG.marketRefreshCost)
+  );
   st.inventory = st.inventory || {};
   st.research = st.research || {};
   st.researchLoss = st.researchLoss || {};
   st.breedFails = st.breedFails || [];
+  st.failedPairs = st.failedPairs || [];
   st.dex = st.dex || [];
   st.stats = st.stats || {};
   st.eggKnown = st.eggKnown || {};
@@ -36,7 +45,16 @@ function normalizeState(st) {
     const cap = toleranceCap(m.level, m.gender);
     if (m.tolerance == null) m.tolerance = cap;
     if (m.tolerance > cap) m.tolerance = cap;
+    m.shiny = !!m.shiny;
+    m.sterile = !!m.sterile;
   });
+  let nextMonNo = 1;
+  st.mons.forEach((m) => {
+    if (!m.no) m.no = nextMonNo;
+    nextMonNo = Math.max(nextMonNo, Number(m.no) + 1 || 1);
+  });
+  st.nextMonNo = Math.max(Number(st.nextMonNo) || 1, nextMonNo);
+  st.expJournal = st.expJournal || [];
   st.won = !!st.won;
   st.wonDay = st.wonDay ?? null;
   st.quit = !!st.quit;

@@ -2,13 +2,14 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import * as L from '../js/logic.mjs';
-import { initDex, initExperiments, sp } from '../js/data.mjs';
+import { initDex, initExperiments, initExperimentResults, sp } from '../js/data.mjs';
 import { serialize, deserialize } from '../js/save.mjs';
 
 const dex = JSON.parse(await readFile(fileURLToPath(new URL('../data/dex.json', import.meta.url)), 'utf8'));
 const experiments = JSON.parse(await readFile(fileURLToPath(new URL('../data/experiments.json', import.meta.url)), 'utf8'));
 initDex(dex);
 initExperiments(experiments);
+initExperimentResults(JSON.parse(await readFile(fileURLToPath(new URL('../data/experiment-results.json', import.meta.url)), 'utf8')));
 
 let failures = 0;
 const check = (ok, label, extra = '') => {
@@ -18,10 +19,28 @@ const check = (ok, label, extra = '') => {
 };
 
 const BASE = new Set(['measure', 'sample', 'battle']);
+const resultData = JSON.parse(await readFile(fileURLToPath(new URL('../data/experiment-results.json', import.meta.url)), 'utf8'));
+const nameById = new Map([
+  ['measure', '基础体测'],
+  ['sample', '组织采样'],
+  ['battle', '对战测试'],
+  ...Object.values(experiments.species).flatMap((entry) => entry.experiments.map((e) => [e.id, e.name])),
+]);
 const allIds = new Set();
 let total = 0;
 let executed = 0;
 let seed = 7000;
+
+check(Object.keys(resultData).length === nameById.size, '每个行为都有独立结果池', `(${Object.keys(resultData).length}/${nameById.size})`);
+for (const [id, name] of nameById) {
+  const pool = resultData[id];
+  check(pool?.survive?.length === 40 && pool?.death?.length === 10, `${id} 结果池为 40 生还 + 10 死亡`);
+  check(new Set(pool?.survive || []).size === 40 && new Set(pool?.death || []).size === 10, `${id} 结果无重复`);
+  check((pool?.survive || []).every((s) => s.includes(`「${name}」`)), `${id} 生还结果包含实验名`);
+  check((pool?.death || []).every((s) => s.includes(`「${name}」`)), `${id} 死亡结果包含实验名`);
+  check((pool?.survive || []).every((s) => !/呼吸就停|没有反应|死在|断了气|遗体|再没有醒来/.test(s)), `${id} 生还池无死亡文案`);
+  check((pool?.death || []).every((s) => !/还活着|没有断气|活着出来/.test(s)), `${id} 死亡池无生还文案`);
+}
 
 for (const [idStr, entry] of Object.entries(experiments.species)) {
   const id = Number(idStr);

@@ -17,13 +17,19 @@ function toleranceGray(mon) {
   return Math.max(0, Math.min(1, 1 - mon.tolerance / max));
 }
 const spriteFilter = (mon) => {
+  const parts = [];
   const g = toleranceGray(mon);
-  return g > 0 ? ` style="filter:grayscale(${g.toFixed(3)})"` : '';
+  if (g > 0) parts.push(`grayscale(${g.toFixed(3)})`);
+  if (mon?.shiny) parts.push('drop-shadow(0 0 6px rgba(255,215,106,.95))');
+  return parts.length ? ` style="filter:${parts.join(' ')}"` : '';
 };
 const applyToleranceFilter = (img, mon) => {
   if (!img) return;
+  const parts = [];
   const g = toleranceGray(mon);
-  img.style.filter = g > 0 ? `grayscale(${g.toFixed(3)})` : '';
+  if (g > 0) parts.push(`grayscale(${g.toFixed(3)})`);
+  if (mon?.shiny) parts.push('drop-shadow(0 0 6px rgba(255,215,106,.95))');
+  img.style.filter = parts.join(' ');
 };
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
 const pct = (v, max) => (max <= 0 ? 0 : Math.max(0, Math.min(100, (v / max) * 100)));
@@ -42,6 +48,14 @@ let speed = 1;
 let modal = null;
 let logs = [];
 let toastTimer = null;
+let pendingExp = null;
+let experimentLoading = true;
+let loadingOverrideMs = null;
+
+export function setExperimentLoading(enabled = true, overrideMs = null) {
+  experimentLoading = !!enabled;
+  loadingOverrideMs = overrideMs == null ? null : Number(overrideMs);
+}
 
 // 底部 TAB：培育 / 实验室 / 围栏 / 经营 / 图鉴
 const TABS = ['pens', 'lab', 'idle', 'market', 'dex'];
@@ -77,6 +91,8 @@ export function setState(next) {
   resetSignatures();
   activeTab = 'pens';
   logs = [];
+  if (pendingExp?.timer) clearInterval(pendingExp.timer);
+  pendingExp = null;
   closeModal();
   render();
   renderTabs();
@@ -249,7 +265,7 @@ function handleAction(act, d) {
     case 'unassign': {
       const r = L.removeFromPen(S, d.uid);
       toast(r.msg, r.ok ? 'good' : 'bad');
-      openModal('mon', { uid: d.uid });
+      if (r.ok) closeModal();
       render();
       break;
     }
@@ -296,24 +312,13 @@ function handleAction(act, d) {
       openModal('labexp', { uid: d.uid });
       break;
     case 'run-exp': {
-      const r = L.startExperiment(S, d.uid, d.exp);
-      toast(r.msg, r.ok ? 'good' : 'bad');
-      if (r.events) handleEvents(r.events);
-      const won = r.events?.some((e) => e.type === 'win');
-      if (r.ok) {
-        if (!won) closeModal();
-      } else {
-        openModal('labexp', { uid: d.uid });
-      }
-      render();
-      if (r.ok && !r.released) playLabHit(d.uid, r.intensity);
+      beginExperiment(d.uid, d.exp);
       break;
     }
-    case 'release-mon': {
-      // 不再二次确认
-      const r = L.releaseMon(S, d.uid, 'manual');
+    case 'process-lab': {
+      const r = L.processLabSlot(S, Number(d.slot));
       toast(r.msg, r.ok ? 'good' : 'bad');
-      closeModal();
+      if (r.ok) closeModal();
       render();
       break;
     }
@@ -455,7 +460,7 @@ function ensureHeroes() {
 }
 
 function patchHeroText() {
-  const filled = S.lab.filter((slot) => slot.uid).length;
+  const filled = L.labOccupied(S);
   const idleCount = L.idleMons(S).length;
   const conflicts = L.idleConflicts(S).length;
   setText(el('hero-sub-pens'), `${S.pens.length} 个栏位 · ${S.eggs.length}/${L.eggSlots(S)} 枚蛋`);
@@ -489,7 +494,8 @@ function statRowHtml(key, value, unlocked) {
 // ---------- 培育栏 ----------
 function pensSignature() {
   const key = (m) => (m ? `${m.uid}:${m.dexId}:${knownKey(m.dexId)}` : '-');
-  return S.pens.map((p) => `${key(L.monByUid(S, p.a))}|${key(L.monByUid(S, p.b))}`).join(';');
+  const fails = (S.failedPairs || []).join(',') + '|' + (S.breedFails || []).map((f) => `${f.a?.dexId}-${f.b?.dexId}`).join(',');
+  return S.pens.map((p) => `${key(L.monByUid(S, p.a))}|${key(L.monByUid(S, p.b))}`).join(';') + '|' + fails;
 }
 
 function ensurePens() {
@@ -506,6 +512,7 @@ function ensurePens() {
           ${a ? monSlotHtml(a, i, 'a') : emptySlotHtml(i, 'a')}
           ${b ? monSlotHtml(b, i, 'b') : emptySlotHtml(i, 'b')}
         </div>
+        <div class="pen-warn hidden" id="pen-${i}-warn"></div>
         <div class="breed" id="pen-${i}-breed" style="display:none">
           <span>繁育</span>
           <div class="bar"><i id="pen-${i}-breedbar" style="width:0%"></i></div>
@@ -518,11 +525,12 @@ function ensurePens() {
 
 function monSlotHtml(mon, pen, slot) {
   const s = sp(mon.dexId);
-  return `<div class="slot filled" id="pen-${pen}-${slot}" data-act="open-mon" data-uid="${mon.uid}" title="查看详情">
+  return `<div class="slot filled ${mon.shiny ? 'shiny' : ''}" id="pen-${pen}-${slot}" data-act="open-mon" data-uid="${mon.uid}" title="查看详情">
     <img id="pen-${pen}-${slot}-img" src="${sprite(mon.dexId)}"${imgFallback(mon.dexId)}${spriteFilter(mon)} alt="${s.zh}" />
-    <div class="nm">${s.zh}<span class="g">${L.genderZh(mon.gender)}</span></div>
+    <div class="nm">${s.zh}<span class="g">${L.genderZh(mon.gender)}</span>${mon.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
     <div class="lv" id="pen-${pen}-${slot}-lv">Lv.${mon.level}</div>
     <div class="egg-grp">${L.eggGroupsDisplay(S, mon.dexId)}</div>
+    ${mon.sterile ? `<div class="sterile-badge">${L.sterilityLabel(mon)}</div>` : ''}
     <div class="types">${typeBadges(s.types)}</div>
     <div class="bar exp" style="width:100%"><i id="pen-${pen}-${slot}-exp" style="width:0%"></i></div>
   </div>`;
@@ -541,6 +549,20 @@ function patchPens() {
 
     // 两只都在就会积累繁育条；成败要等条满才知道
     const both = !!(a && b);
+    const warn = el(`pen-${i}-warn`);
+    if (warn) {
+      const comp = both ? L.compatibility(S, a, b) : null;
+      const failed = both && L.failedPair(S, a.dexId, b.dexId);
+      if (comp?.sterile) {
+        setText(warn, comp.reason);
+        warn.classList.remove('hidden');
+      } else if (failed) {
+        setText(warn, `${sp(a.dexId).zh} 与 ${sp(b.dexId).zh} 曾配对失败，不能继续同栏`);
+        warn.classList.remove('hidden');
+      } else {
+        warn.classList.add('hidden');
+      }
+    }
     const breed = el(`pen-${i}-breed`);
     if (breed) {
       breed.style.display = both ? 'flex' : 'none';
@@ -594,7 +616,7 @@ function ensureEggs() {
   sig.eggs = s;
   const host = $('#eggs');
   if (!S.eggs.length) {
-    host.innerHTML = `<div class="empty-tip">孵化器空闲。到市场买蛋，或把两只宝可梦放进同一栏位试试繁育。</div>`;
+    host.innerHTML = `<div class="empty-tip">孵化器空闲。到蛋贩子那里买蛋，或把两只宝可梦放进同一栏位试试繁育。</div>`;
     return;
   }
   host.innerHTML = S.eggs
@@ -625,11 +647,15 @@ function patchEggs() {
 
 // ---------- 实验室 ----------
 function labSignature() {
-  const key = (uid) => {
-    const m = L.monByUid(S, uid);
-    return m ? `${m.uid}:${m.dexId}:${knownKey(m.dexId)}` : '-';
+  const key = (slot) => {
+    if (slot.uid) {
+      const m = L.monByUid(S, slot.uid);
+      return m ? `m:${m.uid}:${m.dexId}:${knownKey(m.dexId)}` : 'm:?';
+    }
+    if (slot.corpse) return `c:${slot.corpse.dexId}:${slot.corpse.level}:${slot.corpse.day}`;
+    return '-';
   };
-  return `${S.lab.length}:` + S.lab.map((slot) => key(slot.uid)).join('|');
+  return `${S.lab.length}:` + S.lab.map(key).join('|');
 }
 
 function ensureLab() {
@@ -639,18 +665,35 @@ function ensureLab() {
   const host = $('#lab');
   host.innerHTML = S.lab
     .map((slot, i) => {
+      if (slot.corpse) {
+        const c = slot.corpse;
+        const spc = sp(c.dexId);
+        return `<div class="lab-card dead" id="lab-${i}">
+          <div class="lab-head">
+            <img src="${sprite(c.dexId)}"${imgFallback(c.dexId)} style="filter:grayscale(1) brightness(0.45)" alt="${spc.zh}" />
+            <div>
+              <div class="nm">${spc.zh}</div>
+              <div class="lv">Lv.${c.level} · 已死亡</div>
+            </div>
+          </div>
+          <div class="lab-note dead">实验对象已死亡，遗体占用实验台；处理后可重新使用。</div>
+          <div class="lab-actions">
+            <button class="ghost danger" data-act="process-lab" data-slot="${i}" id="lab-${i}-process">处理 🪙 ${L.labProcessCost(S, i)}</button>
+          </div>
+        </div>`;
+      }
       const mon = L.monByUid(S, slot.uid);
       if (!mon) {
         return `<button class="slot empty lab-empty" data-act="open-lab-picker" data-slot="${i}">＋<br />放入实验对象</button>`;
       }
       const spc = sp(mon.dexId);
       const done = L.isResearched(S, mon.dexId);
-      return `<div class="lab-card" id="lab-${i}">
+      return `<div class="lab-card ${mon.shiny ? 'shiny' : ''}" id="lab-${i}">
         <div class="lab-head">
           <img id="lab-${i}-img" src="${sprite(mon.dexId)}"${imgFallback(mon.dexId)}${spriteFilter(mon)} alt="${spc.zh}" />
           <div>
-            <div class="nm">${spc.zh}</div>
-            <div class="lv">Lv.${mon.level} · ${L.eggGroupsDisplay(S, mon.dexId)}</div>
+            <div class="nm">${spc.zh}${mon.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
+            <div class="lv">Lv.${mon.level} · ${L.eggGroupsDisplay(S, mon.dexId)}${mon.sterile ? ` · ${L.sterilityLabel(mon)}` : ''}</div>
           </div>
         </div>
         <div class="lab-stat"><span>耐受度</span><b id="lab-${i}-tol">${Math.round(mon.tolerance)} / ${maxTolerance(mon)}</b></div>
@@ -660,7 +703,7 @@ function ensureLab() {
         ${done ? '<div class="lab-note">研究已完成 · 只剩最伤身的那种实验</div>' : ''}
         <div class="lab-actions">
           <button class="mini" data-act="open-exp" data-uid="${mon.uid}">实验</button>
-          <button class="ghost danger" data-act="release-mon" data-uid="${mon.uid}" title="放生（放归野外，不可撤销）">放生</button>
+          <button class="ghost danger" data-act="process-lab" data-slot="${i}" id="lab-${i}-process" title="处理（不可撤销，费用随剩余耐受度变化）">处理 🪙 ${L.labProcessCost(S, i)}</button>
         </div>
       </div>`;
     })
@@ -668,10 +711,12 @@ function ensureLab() {
 }
 
 function patchLab() {
-  const filled = S.lab.filter((slot) => slot.uid).length;
+  const filled = L.labOccupied(S);
   const cost = L.upgradeCost(S, 'lab');
   $('#lab-hint').textContent = `${filled}/${S.lab.length} 个实验台${cost != null ? ` · 扩建 ${fmt(cost)} 资金` : ''}`;
   S.lab.forEach((slot, i) => {
+    const processBtn = el(`lab-${i}-process`);
+    if (processBtn) setText(processBtn, `处理 🪙 ${L.labProcessCost(S, i)}`);
     const mon = L.monByUid(S, slot.uid);
     if (!mon) return;
     const max = Math.max(1, maxTolerance(mon));
@@ -683,6 +728,90 @@ function patchLab() {
     setWidth(el(`lab-${i}-resbar`), pctRes);
     applyToleranceFilter(el(`lab-${i}-img`), mon);
   });
+}
+
+function experimentDuration(exp) {
+  if (loadingOverrideMs != null) return Math.max(1, loadingOverrideMs);
+  if (exp.id === 'measure') return 900;
+  if (exp.id === 'sample') return 1400;
+  if (exp.id === 'battle') return 2000;
+  if (exp.tier === 'harsh') return 2000;
+  if (exp.tier === 'standard') return 1400;
+  return 900;
+}
+
+function beginExperiment(uid, expId) {
+  if (pendingExp) return;
+  const mon = L.monByUid(S, uid);
+  if (!mon) return toast('找不到宝可梦', 'bad');
+  const exp = L.experimentsFor(mon.dexId).find((e) => e.id === expId);
+  if (!exp) return toast('没有这个实验', 'bad');
+  const snapshot = { no: mon.no, dexId: mon.dexId, level: mon.level, name: sp(mon.dexId).zh };
+  if (!experimentLoading) {
+    completeExperiment(uid, expId, snapshot, exp);
+    return;
+  }
+  pendingExp = {
+    uid,
+    expId,
+    expName: exp.name,
+    duration: experimentDuration(exp),
+    start: Date.now(),
+    snapshot,
+    timer: null,
+  };
+  openModal('labexp', { uid });
+  pendingExp.timer = setInterval(updateExperimentLoading, 50);
+  updateExperimentLoading();
+}
+
+function updateExperimentLoading() {
+  if (!pendingExp) return;
+  const pct = Math.min(100, ((Date.now() - pendingExp.start) / pendingExp.duration) * 100);
+  setWidth(el('exp-progress'), pct);
+  setText(el('exp-progress-text'), `${Math.floor(pct)}%`);
+  if (pct >= 100) {
+    const { uid, expId, snapshot } = pendingExp;
+    const mon = L.monByUid(S, uid);
+    const exp = mon ? L.experimentsFor(mon.dexId).find((e) => e.id === expId) : null;
+    clearInterval(pendingExp.timer);
+    pendingExp = null;
+    if (!exp) {
+      toast('实验对象已不在实验室', 'bad');
+      render();
+      openModal('labexp', { uid });
+      return;
+    }
+    completeExperiment(uid, expId, snapshot, exp);
+  }
+}
+
+function completeExperiment(uid, expId, snapshot, exp) {
+  if (pendingExp?.timer) clearInterval(pendingExp.timer);
+  pendingExp = null;
+  const r = L.startExperiment(S, uid, expId);
+  if (!r.ok) {
+    toast(r.msg, 'bad');
+    openModal('labexp', { uid });
+    render();
+    return;
+  }
+  if (r.events) handleEvents(r.events);
+  const won = r.events?.some((e) => e.type === 'win');
+  if (!r.released) playLabHit(uid, r.intensity);
+  render();
+  if (r.result && !won) {
+    openModal('expresult', {
+      uid,
+      expId,
+      expName: exp.name,
+      mon: snapshot,
+      result: r.result,
+      corpseSlot: r.corpseSlot,
+    });
+  } else if (!won) {
+    closeModal();
+  }
 }
 
 function playLabHit(uid, intensity = 0.5) {
@@ -722,11 +851,12 @@ function ensureIdle() {
     .map((m) => {
       const spc = sp(m.dexId);
       const fighting = conflictKeys.has(`${m.dexId}:${m.gender}`);
-      return `<div class="idle-mon${fighting ? ' fighting' : ''}" id="idle-${m.uid}" data-act="open-mon" data-uid="${m.uid}" title="查看详情">
+      return `<div class="idle-mon${fighting ? ' fighting' : ''}${m.shiny ? ' shiny' : ''}" id="idle-${m.uid}" data-act="open-mon" data-uid="${m.uid}" title="查看详情">
         <img id="idle-${m.uid}-img" src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="${spc.zh}" />
-        <div class="n">${spc.zh}<span class="g">${L.genderZh(m.gender)}</span></div>
+        <div class="n">${spc.zh}<span class="g">${L.genderZh(m.gender)}</span>${m.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
         <div class="lv" id="idle-${m.uid}-lv">Lv.${m.level}</div>
         <div class="egg-grp">${L.eggGroupsDisplay(S, m.dexId)}</div>
+        ${m.sterile ? `<div class="sterile-badge">${L.sterilityLabel(m)}</div>` : ''}
       </div>`;
     })
     .join('');
@@ -853,7 +983,7 @@ function patchOrders() {
   }
 }
 
-// ---------- 市场 ----------
+// ---------- 蛋贩子 ----------
 function shopSignature() {
   return S.market.map((o) => `${o.dexId}:${o.price}:${o.source || ''}:${knownKey(o.dexId)}`).join('|');
 }
@@ -902,8 +1032,8 @@ function ensureShop() {
     <div class="section-title" style="margin:2px 0 4px">蛋贩子</div>
     <div class="market-list">${marketHtml || '<div class="empty-tip">蛋贩子手上暂时没货了，花钱让他再跑一趟。</div>'}</div>
     <div class="market-reroll">
-      <span class="hint">货不新鲜了？让蛋贩子再拿一批。</span>
-      <button id="reroll-market" data-act="reroll-market">换一批 🪙 ${fmt(CONFIG.marketRefreshCost)}</button>
+      <span class="hint">每天自动换货；换一批费用会逐次上涨，等待会回落。</span>
+      <button id="reroll-market" data-act="reroll-market">换一批 🪙 ${fmt(L.marketRerollCost(S))}</button>
     </div>
     <div class="section-title" style="margin:10px 0 4px">进化道具</div>
     <div class="items">${itemsHtml}</div>`;
@@ -921,7 +1051,11 @@ function patchShop() {
     if (btn) btn.disabled = S.gold < offer.price;
   });
   const reroll = el('reroll-market');
-  if (reroll) reroll.disabled = S.gold < CONFIG.marketRefreshCost;
+  if (reroll) {
+    const rerollCost = L.marketRerollCost(S);
+    reroll.disabled = S.gold < rerollCost;
+    setText(reroll, `换一批 🪙 ${fmt(rerollCost)}`);
+  }
   for (const item of [...STONE_ITEMS, 'trade-cable']) {
     setText(el(`inv-${item}`), `×${S.inventory[item] || 0}`);
     const btn = el(`buy-item-${item}`);
@@ -995,6 +1129,7 @@ function openModal(type, data = {}) {
 }
 
 function closeModal() {
+  if (pendingExp) return;
   modal = null;
   const root = $('#modal');
   if (!root) return;
@@ -1019,6 +1154,7 @@ function renderModal() {
   else if (modal.type === 'picker') root.innerHTML = pickerModalHtml(modal.pen, modal.slot);
   else if (modal.type === 'deliver') root.innerHTML = deliverModalHtml(modal.orderId);
   else if (modal.type === 'labexp') root.innerHTML = labExpModalHtml(modal.uid);
+  else if (modal.type === 'expresult') root.innerHTML = expResultModalHtml();
   else if (modal.type === 'labpicker') root.innerHTML = labPickerModalHtml(modal.slot);
   else if (modal.type === 'ranks') root.innerHTML = ranksModalHtml();
   else if (modal.type === 'menu') root.innerHTML = menuModalHtml();
@@ -1081,12 +1217,14 @@ function monModalHtml(uid) {
        <div class="bar hap" style="max-width:230px"><i style="width:${Math.max(0, Math.min(100, (tolNow / tolMax) * 100))}%"></i></div>
        <div class="kv"><span class="k">图鉴研究</span><span class="v">${L.researchPercent(S, mon.dexId)}%</span></div>
        <div class="bar study" style="max-width:230px"><i style="width:${L.researchPercent(S, mon.dexId)}%"></i></div>
-       <div class="kv"><span class="k">状态</span><span class="v" style="color:#ffb3ba">实验中（无法取出）</span></div>`
+       <div class="kv"><span class="k">状态</span><span class="v" style="color:#ffb3ba">实验中（只能处理）</span></div>`
     : '';
 
+  const labIdx = inLab ? S.lab.findIndex((slot) => slot.uid === mon.uid) : -1;
+  const labCost = inLab ? L.labProcessCost(S, labIdx) : 0;
   const actionButtons = inLab
     ? `<button data-act="open-exp" data-uid="${mon.uid}">进行实验</button>
-       <button class="ghost danger" data-act="release-mon" data-uid="${mon.uid}" title="放生（放归野外，不可撤销）">放生</button>`
+       <button class="ghost danger" data-act="process-lab" data-slot="${labIdx}" title="处理（不可撤销，费用随剩余耐受度变化）">处理 🪙 ${fmt(labCost)}</button>`
     : `<button data-act="feed" data-uid="${mon.uid}" ${S.candies <= 0 ? 'disabled' : ''}>喂经验糖果（余 ${S.candies}）</button>
        ${penButtons}
        <button class="ghost danger" data-act="sell" data-uid="${mon.uid}">出售 🪙 ${fmt(L.sellPrice(mon))}</button>`;
@@ -1107,7 +1245,8 @@ function monModalHtml(uid) {
         <div class="kv"><span class="k">等级</span><span class="v">Lv.${mon.level} <span style="color:var(--muted);font-weight:400">(${fmt(mon.exp)}/${fmt(need)} 经验)</span></span></div>
         <div class="bar exp" style="max-width:230px"><i style="width:${pct(mon.exp, need)}%"></i></div>
         <div class="kv"><span class="k">性别</span><span class="v">${L.genderZh(mon.gender)}　性格 ${nat.zh}</span></div>
-        <div class="kv"><span class="k">特性</span><span class="v">${mon.ability}</span></div>
+        ${mon.shiny ? '<div class="kv"><span class="k">闪光</span><span class="v" style="color:#ffd76a">✨ 是</span></div>' : ''}
+        ${mon.sterile ? `<div class="kv"><span class="k">生育</span><span class="v" style="color:#ffb3ba">${L.sterilityLabel(mon)}</span></div>` : ''}
         <div class="kv"><span class="k">蛋组</span><span class="v">${L.eggGroupsDisplay(S, mon.dexId)}</span></div>
         ${labMeta}
       </div>
@@ -1169,9 +1308,28 @@ function speciesModalHtml(dexId) {
       done && rec
         ? `<div class="kv" style="margin-top:10px"><span class="k">研究行为</span><span class="v">${L.dexRecordText(rec)} · 损耗 ${lost} 只</span></div>`
         : ''
-    }`,
+    }
+    <div class="section-title">实验日志</div>
+    <div class="exp-journal">${expJournalRowsHtml(dexId, 10)}</div>`,
     `<span class="hint" style="font-size:11px;color:var(--muted)">图鉴 #${String(dexId).padStart(3, '0')}</span>`
   );
+}
+
+function expJournalRowsHtml(dexId = null, limit = 50) {
+  const rows = (S.expJournal || [])
+    .filter((e) => dexId == null || e.dexId === dexId)
+    .slice(0, limit)
+    .map((e) => {
+      const name = sp(e.dexId)?.zh || e.dexId;
+      return `<div class="exp-journal-row ${e.survived ? 'alive' : 'dead'}">
+        <span class="d">D${e.day}</span>
+        <span class="who">对 #${String(e.no ?? '—').padStart(4, '0')} ${name}（Lv.${e.level}）</span>
+        <span class="act">进行了「${esc(e.expName)}」</span>
+        <span class="res">：${esc(e.result)}</span>
+      </div>`;
+    })
+    .join('');
+  return rows || '<div class="empty-tip">还没有实验日志。</div>';
 }
 
 function breedLogModalHtml() {
@@ -1197,19 +1355,24 @@ function breedLogModalHtml() {
 }
 
 function pickerModalHtml(penIdx, slot) {
+  const pen = S.pens[penIdx];
+  const other = L.monByUid(S, slot === 'a' ? pen?.b : pen?.a);
+  const blocked = other ? L.failedPartners(S, other.dexId) : new Set();
   const body = S.mons
     .filter((m) => !L.labContains(S, m.uid) && L.penIndex(S, m.uid) === -1)
     .map((m) => {
       const s = sp(m.dexId);
-      return `<button class="pick" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}">
+      const isBlocked = !!other && m.dexId !== other.dexId && blocked.has(m.dexId);
+      const reason = isBlocked ? `曾与${sp(other.dexId).zh}配对失败，不可用` : null;
+      return `<button class="pick${isBlocked ? ' blocked' : ''}" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}" ${isBlocked ? 'disabled' : ''}${reason ? ` title="${reason}"` : ''}>
         <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="" />
-        <span class="pn">${s.zh} ${L.genderZh(m.gender)}</span>
-        <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)} · 空闲</span>
+        <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}</span>
+        <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)} · ${reason || '空闲'}${m.sterile ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
     })
     .join('');
   return modalShell(
-    `选择宝可梦 → 栏位 ${penIdx + 1}`,
+    `选择宝可梦 → 栏位 ${penIdx + 1}${other ? `（与 ${sp(other.dexId).zh} 配对）` : ''}`,
     `<div class="picker-list">${body || '<div class="empty-tip">没有空闲的宝可梦；实验室里的和已在其他栏位的都不能放入。</div>'}</div>`
   );
 }
@@ -1223,8 +1386,8 @@ function deliverModalHtml(orderId) {
       const s = sp(m.dexId);
       return `<button class="pick" data-act="deliver" data-order="${order.id}" data-uid="${m.uid}">
         <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="" />
-        <span class="pn">${s.zh} ${L.genderZh(m.gender)}</span>
-        <span class="ps">Lv.${m.level} · ${typeZh(s.types[0])} · ${L.eggGroupsDisplay(S, m.dexId)}</span>
+        <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}</span>
+        <span class="ps">Lv.${m.level} · ${typeZh(s.types[0])} · ${L.eggGroupsDisplay(S, m.dexId)}${m.sterile ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
     })
     .join('');
@@ -1241,6 +1404,17 @@ function deliverModalHtml(orderId) {
 }
 
 function labExpModalHtml(uid) {
+  if (pendingExp && pendingExp.uid === uid) {
+    return `<div class="modal-card">
+      <div class="modal-head"><h3>正在 ${pendingExp.expName}……</h3></div>
+      <div class="exp-loading">
+        <div class="exp-loading-icon">🧪</div>
+        <p>实验正在继续，不要关闭页面。</p>
+        <div class="bar exp-loadbar"><i id="exp-progress" style="width:0%"></i></div>
+        <div class="exp-loading-pct" id="exp-progress-text">0%</div>
+      </div>
+    </div>`;
+  }
   const mon = L.monByUid(S, uid);
   if (!mon) return modalShell('找不到宝可梦', '<p>它可能已经不在了。</p>');
   const s = sp(mon.dexId);
@@ -1265,14 +1439,34 @@ function labExpModalHtml(uid) {
   const note = locked
     ? `<p class="hint" style="font-size:12px;color:#ffb3ba;margin-bottom:10px">该物种的图鉴研究已经完成。现在只有最伤身的那一种实验还能记录到新数据，其余行为不再可用；<b>也不再受冷却限制</b>。</p>`
     : `<p class="hint" style="font-size:12px;color:var(--muted);margin-bottom:12px">
-        实验的具体影响不会事先显示。耐受度归零，或不足以承受下一次实验时，实验对象会消亡。每种实验都有冷却，越深入冷却越久。
+        实验的具体影响不会事先显示。耐受度归零，或不足以承受下一次实验时，实验对象会死亡并留下遗体，占用实验台；处理遗体需要花金币。每种实验都有冷却，越深入冷却越久。
       </p>`;
   return modalShell(`对 ${s.zh} 进行实验`, `${note}<div class="exp-list">${rows}</div>`);
 }
 
+function expResultModalHtml() {
+  const r = modal.result || { survived: true, text: '实验记录已归档。' };
+  const mon = modal.mon || {};
+  const survived = r.survived !== false;
+  const slot = modal.corpseSlot;
+  const corpseCost = !survived && Number.isInteger(slot) ? L.labProcessCost(S, slot) : 0;
+  return modalShell(
+    survived ? '实验结束 · 生还' : '实验事故 · 死亡',
+    `<div class="exp-result ${survived ? 'alive' : 'dead'}">
+      <div class="exp-result-meta">#${String(mon.no ?? '—').padStart(4, '0')} ${esc(mon.name || '实验对象')} Lv.${mon.level ?? '—'} · ${esc(modal.expName || '实验')}</div>
+      <p class="exp-result-text">${esc(r.text)}</p>
+      ${!survived && Number.isInteger(slot) ? `<div class="exp-result-note">遗体仍占用实验台，处理后才能放入新的实验对象。</div>` : ''}
+      <div class="actions">
+        <button data-act="close">收起记录</button>
+        ${!survived && Number.isInteger(slot) ? `<button class="ghost danger" data-act="process-lab" data-slot="${slot}">处理遗体 🪙 ${fmt(corpseCost)}</button>` : ''}
+      </div>
+    </div>`
+  );
+}
+
 // 实验弹窗里的冷却倒计时只做局部更新，不重建整个弹窗（避免按钮 hover 被打断）
 function patchLabExpModal() {
-  if (!modal || modal.type !== 'labexp' || !S) return;
+  if (!modal || modal.type !== 'labexp' || !S || pendingExp) return;
   const mon = L.monByUid(S, modal.uid);
   if (!mon) return;
   for (const e of L.experimentOptions(S, mon)) {
@@ -1296,14 +1490,14 @@ function labPickerModalHtml(slot) {
       const s = sp(m.dexId);
       return `<button class="pick" data-act="assign-lab" data-slot="${slot}" data-uid="${m.uid}">
         <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="" />
-        <span class="pn">${s.zh} ${L.genderZh(m.gender)}</span>
-        <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)}</span>
+        <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}</span>
+        <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)}${m.sterile ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
     })
     .join('');
   return modalShell(
     `选择实验对象 → 实验台 ${slot + 1}`,
-    `<p class="hint" style="font-size:12px;color:#ffb3ba;margin-bottom:10px">选中即送入实验室。进去后就取不出来了，只能实验或放生。</p>
+    `<p class="hint" style="font-size:12px;color:#ffb3ba;margin-bottom:10px">选中即送入实验室。进去后就取不出来了，只能实验或处理；处理需要花金币，死亡个体也会占位。</p>
      <div class="picker-list">${body || '<div class="empty-tip">没有空闲的宝可梦；培育栏里的需要先移出。</div>'}</div>`
   );
 }
@@ -1375,7 +1569,9 @@ function dexPageSignature() {
   const recs = Object.keys(S.dexRecords || {})
     .map((k) => `${k}:${S.dexRecords[k]?.day ?? ''}:${S.dexRecords[k]?.lost ?? ''}`)
     .join(',');
-  return `${S.dex.join(',')}|${research}|${losses}|${recs}`;
+  const journal = S.expJournal || [];
+  const journalSig = `${journal.length}:${journal[0]?.day ?? ''}:${journal[0]?.no ?? ''}:${journal[0]?.expId ?? ''}`;
+  return `${S.dex.join(',')}|${research}|${losses}|${recs}|${journalSig}`;
 }
 
 function ensureDexPage() {
@@ -1387,7 +1583,9 @@ function ensureDexPage() {
   const totalLost = Object.keys(S.dexRecords || {}).reduce((sum, id) => sum + (S.dexRecords[id]?.lost || 0), 0);
   host.innerHTML = `<div class="dex-grid">${dexCellsHtml()}</div>
     <div class="section-title">研究记录 · 已完成 ${S.dex.length} 条${totalLost ? ` · 累计损耗 ${totalLost} 只` : ''}</div>
-    <div class="dex-records">${dexRecordsHtml()}</div>`;
+    <div class="dex-records">${dexRecordsHtml()}</div>
+    <div class="section-title">实验日志 · 最近 ${Math.min(50, (S.expJournal || []).length)} 条</div>
+    <div class="exp-journal">${expJournalRowsHtml(null, 50)}</div>`;
 }
 
 function ranksModalHtml() {
@@ -1440,14 +1638,14 @@ function helpModalHtml() {
     `<div class="help">
       <p>你是年轻的大木博士，被“请”进火箭队的地下基地：替他们管理与运营抢来的宝可梦，同时偷偷记录每一只的数据，为日后那部图鉴写下第一手说明。</p>
       <ul>
-        <li><b>繁育</b>：栏位里放两只就会积累繁育条。条满时如果条件正常（一雄一雌、蛋组交叠）就会产蛋，母体因此损耗耐受度（低等级母体大约撑 3 只后代，等级越高越耐用）；没有雌性时由<b>百变怪</b>承担损耗，雄性不掉耐受度。条件不正常，两只就会争斗——<b>较弱的那只阵亡</b>，另一只受伤。</li>
+        <li><b>繁育</b>：栏位里放两只就会积累繁育条。条满时如果条件正常（一雄一雌、蛋组交叠）就会产蛋，母体因此损耗耐受度（低等级母体大约撑 3 只后代，等级越高越耐用）；没有雌性时由<b>百变怪</b>承担损耗，雄性不掉耐受度。条件不正常，两只就会争斗——<b>较弱的那只阵亡</b>，另一只受伤。新个体有 <b>1/4096</b> 概率闪光，<b>2/4096</b> 概率不孕（♀）/不育（♂）；不孕不育无法配种，但不会因此争斗。配对失败过的物种组合会永久互相锁定，不能再放进同一栏。</li>
         <li><b>蛋组</b>：博士一开始并不知道任何宝可梦的蛋组，界面上只显示 ???。只有亲手繁育出蛋，才会确认两边交汇的那个蛋组。</li>
         <li><b>孵化</b>：蛋在孵化器中倒计时，孵出的永远是该家族的<b>最初形态</b>；孵化步数越高越慢，升级孵化器可加速并增加蛋位。孵出后默认进<b>围栏</b>，要自己放进培育栏。</li>
         <li><b>养成</b>：栏位中的宝可梦会持续获得经验，喂<b>经验糖果</b>可加速成长；不在栏位也不在实验室的会待在<b>围栏</b>里。围栏里同种同性会互相争斗，耐受度持续下降——数量越多掉得越快，分开即可停止。</li>
-        <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的图鉴条目，<b>没有免费的实验</b>。每种实验都有冷却，越深入的实验冷却越久（最长 30 秒）；该物种研究完成后冷却取消。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽消亡，或手动放生；实验具体影响不会事先显示。</li>
-        <li><b>耐受度</b>：上限随等级提高（Lv.1 为 100，每级 +2），<b>雄性再乘 1.25</b>；出厂即满，但只有进了实验室才能在界面上看到。繁育、争斗、实验都会消耗它，归零即离队（实验室消亡 / 争斗阵亡）。物种研究完成后，只剩最伤身的那种实验还能用。</li>
+        <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的图鉴条目，<b>没有免费的实验</b>。每种实验都有冷却，越深入的实验冷却越久（最长 30 秒）；该物种研究完成后冷却取消。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽死亡，或花金币处理；死亡的实验对象会留下遗体，同样占用实验台，必须付费处理才能空出；实验具体影响不会事先显示。每次实验会先播放加载条，再展示生还/死亡结果与实验日志。</li>
+        <li><b>耐受度</b>：上限随等级提高（Lv.1 为 100，每级 +2），<b>雄性再乘 1.25</b>；出厂即满，但只有进了实验室才能在界面上看到。繁育、争斗、实验都会消耗它，归零即离队（实验室死亡并留下遗体 / 其他阵亡）。物种研究完成后，只剩最伤身的那种实验还能用。</li>
         <li><b>能力值</b>：刚接触的物种看不全能力值。随着该物种的研究进度，能力项会按种族值从高到低逐项披露。</li>
-        <li><b>图鉴</b>：研究过的物种会显示灰度图标和进度，100% 完成后才变成彩色；已完成条目会记录研究行为与损耗掉的个体数。</li>
+        <li><b>图鉴</b>：研究过的物种会显示灰度图标和进度，100% 完成后才变成彩色；已完成条目会记录研究行为与损耗掉的个体数，物种详情和图鉴页还会显示最近的实验日志。</li>
         <li><b>进化</b>：升级自动进化；石之进化与通信进化需要在详情页手动触发（消耗道具）。</li>
         <li><b>部门需求</b>：六个部门加上<b>总裁办</b>会提出需求，分任意 / 属性 / 指定物种三类；按时交付可得资金与声望，普通部门金币已大幅下调。过期或主动放弃不再扣声望，但长时间不完成需求会让声望逐日流失，闲置越久流失越快。总裁办的单子又少又难，报酬远高于普通部门，框体带金色专属标识。</li>
         <li><b>经营与职级</b>：资金用于买蛋、经验糖果、进化石与设施。声望达标后花资金晋升职级，职级决定设施能升到多高。</li>

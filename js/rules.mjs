@@ -24,6 +24,10 @@ export const CONFIG = {
   // 部门需求金币倍率：普通部门大幅下调，总裁办上调
   orderRewardMultiplier: 0.4,
   boardOrderRewardMultiplier: 3.2,
+  // 实验室处理费用：活体按剩余耐受度计价，遗体固定少量费用
+  labProcessBase: 8,
+  labProcessPerTolerance: 0.12,
+  labCorpseProcessCost: 6,
   // 声望闲置流失：距上次完成订单超过阈值后，按天流失，速度随时间加快
   repDecayStart: 3,
   repDecayBase: 0.5,
@@ -38,6 +42,9 @@ export const CONFIG = {
   maleToleranceFactor: 1.25,
   // 正常繁育：承担损耗的一方（母体；无雌性时是百变怪）每次产蛋消耗的耐受度
   breedToleranceCost: 32,
+  // 个体出生时的稀有特质：闪光 1/4096，不孕/不育 2/4096（约为闪光两倍）
+  shinyChance: 1 / 4096,
+  sterileChance: 2 / 4096,
   // 围栏争斗：同物种同性别每凑成一对，每只每天额外损耗的耐受度
   idleFightRatePerPairDay: 3,
   // 实验室挣扎：耐受度高于该值时缓慢下降
@@ -51,6 +58,10 @@ export const CONFIG = {
   fightToleranceLoss: 28,
   // 花钱让蛋贩子再送一批蛋
   marketRefreshCost: 60,
+  // 蛋贩子换货：每换一次更贵，但价格会随天数回落；每天自动换货
+  marketRefreshStep: 25,
+  marketRefreshDecayPerDay: 8,
+  marketRefreshMax: 300,
   // 实验行为的总体资金消耗倍率（在基础/档位原始价格上统一放大）
   experimentCostMultiplier: 1.5,
   // 实验室命中动效的损耗基准：损耗达到该值时动效最烈
@@ -81,8 +92,8 @@ export const rankById = (id) => RANKS[clamp(Math.round(Number(id) || 0), 0, RANK
 // atk / spa 属于内部数值，不展示给玩家；仅用于推导耐受度损耗
 export const BASE_EXPERIMENTS = [
   { id: 'measure', name: '基础体测', atk: 10, spa: 10, progress: 2, cost: 10, cd: 5, desc: '量身高、称体重，记录最基础的数据。' },
-  { id: 'sample', name: '组织采样', atk: 20, spa: 15, progress: 4, cost: 30, cd: 10, desc: '取一点鳞片或毛发作为样本。' },
-  { id: 'battle', name: '对战测试', atk: 60, spa: 20, progress: 8, cost: 60, cd: 16, desc: '与训练机对战，观察出招与体力分配。' },
+  { id: 'sample', name: '组织采样', atk: 20, spa: 15, progress: 4, cost: 30, cd: 10, desc: '用钳子从活体上硬扯下一块皮肉或甲壳，伤口不缝合，观察它疼到抽搐。' },
+  { id: 'battle', name: '对战测试', atk: 60, spa: 20, progress: 8, cost: 60, cd: 16, desc: '让训练机反复把它打倒，直到四肢发抖、站不起来，记录还能爬起几次。' },
 ];
 
 export const BASE_FILL_ORDER = ['battle', 'sample', 'measure'];

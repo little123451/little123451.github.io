@@ -4,12 +4,13 @@ import { fileURLToPath } from 'node:url';
 import * as L from '../js/logic.mjs';
 import { CONFIG, RANKS, BASE_EXPERIMENTS, EXPERIMENT_TIERS, DEPARTMENTS, BRED_SOURCE, maxTolerance } from '../js/rules.mjs';
 import { serialize, deserialize } from '../js/save.mjs';
-import { initDex, initExperiments, sp, bst } from '../js/data.mjs';
+import { initDex, initExperiments, initExperimentResults, sp, bst } from '../js/data.mjs';
 
 const dex = JSON.parse(await readFile(fileURLToPath(new URL('../data/dex.json', import.meta.url)), 'utf8'));
 initDex(dex);
 const experimentData = JSON.parse(await readFile(fileURLToPath(new URL('../data/experiments.json', import.meta.url)), 'utf8'));
 initExperiments(experimentData);
+initExperimentResults(JSON.parse(await readFile(fileURLToPath(new URL('../data/experiment-results.json', import.meta.url)), 'utf8')));
 
 let failures = 0;
 const check = (cond, label, extra = '') => {
@@ -171,6 +172,8 @@ check(L.sellMon(lab, subject.uid).ok === false, '实验室里的不能出售');
 const gold0 = lab.gold;
 const exp1 = L.startExperiment(lab, subject.uid, 'measure');
 check(exp1.ok && !exp1.released, '基础体测成功');
+check(exp1.result?.survived === true && exp1.result.text.includes('「基础体测」'), '实验返回生还结果文案');
+check(lab.expJournal?.[0]?.no === subject.no && lab.expJournal[0].expName === '基础体测', '实验写入个体日志');
 check(exp1.intensity > 0 && exp1.intensity <= 1, '实验返回动效烈度', `(${exp1.intensity})`);
 check(subject.tolerance < maxTolerance(subject), '耐受度下降', `(${subject.tolerance})`);
 check(L.researchProgress(lab, 16) === 2, '研究进度 +2（已下调）');
@@ -250,6 +253,9 @@ weak.tolerance = 3;
 const goldBefore = lab2.gold;
 const overload = L.startExperiment(lab2, weak.uid, 'sp19-incisor-wear');
 check(overload.ok && overload.released, '超出耐受会放生');
+check(overload.result?.survived === false && overload.result.text.includes('「') && overload.result.text.includes('」'), '超载返回死亡结果文案', overload.result?.text);
+check(lab2.expJournal?.[0]?.cause === 'overload' && lab2.expJournal[0].result === overload.result.text, '死亡结果写入实验日志');
+check(Number.isInteger(overload.corpseSlot), '死亡结果带遗体槽位');
 check(overload.msg.includes('断了气'), '超载实验使用死亡文案', overload.msg);
 check(L.monByUid(lab2, weak.uid) === null, '放生后从名单移除');
 check(lab2.gold === goldBefore, '实验不生效不扣资金');
@@ -265,6 +271,8 @@ lab3.expLog = { 16: Object.fromEntries(L.experimentsFor(16).map((e) => [e.id, 1]
 edge.tolerance = L.toleranceLoss(edge, BASE_EXPERIMENTS[0]);
 const exact = L.startExperiment(lab3, edge.uid, 'measure');
 check(exact.released, '耐受归零时放生');
+check(exact.result?.survived === false && exact.result.text.includes('「基础体测」'), '耐受归零返回死亡结果文案', exact.result?.text);
+check(exact.corpseSlot === 0 && lab3.expJournal?.[0]?.survived === false, '耐受归零记录遗体与死亡日志');
 check(exact.msg.includes('没能走下实验台'), '耐受归零使用死亡文案', exact.msg);
 check(L.researchProgress(lab3, 16) === 2, '归零前进度已结算');
 check(L.monByUid(lab3, edge.uid) === null, '归零后移除');
@@ -394,17 +402,34 @@ const nc2 = L.startExperiment(noCdState, noCdMon.uid, noCdHardest.id);
 check(nc1.ok && nc2.ok, '研究完成后连续实验不再被冷却拦住', `(${nc2.msg})`);
 check(L.experimentCooldownFor(noCdState, noCdMon, noCdHardest.id) === 0, '研究完成后不记录冷却');
 
-// ---------- 市场：花钱找蛋贩子 ----------
+// ---------- 蛋贩子：每日换货 / 换货费递增并随时间回落 ----------
 const shopState = L.newGame(5200);
 shopState.gold = 1000;
 const shopGold = shopState.gold;
+const firstCost = L.marketRerollCost(shopState);
 const reroll = L.rerollMarket(shopState);
-check(reroll.ok && shopState.gold === shopGold - CONFIG.marketRefreshCost, '花钱让蛋贩子换货', `(${shopState.gold})`);
+check(reroll.ok && shopState.gold === shopGold - firstCost, '花钱让蛋贩子换货', `(${shopState.gold})`);
 check(shopState.market.length === 3, '换货后仍有 3 枚蛋');
 check(shopState.market.every((o) => /^(从|在)/.test(o.source)), '蛋的来源描述更完整', shopState.market[0]?.source);
+const nextCost = L.marketRerollCost(shopState);
+check(nextCost > firstCost, '连续换货费用递增', `(${firstCost}→${nextCost})`);
+const marketDayBefore = shopState.marketDay;
 const afterReroll = JSON.stringify(shopState.market);
 L.tick(shopState, 1.1);
-check(JSON.stringify(shopState.market) === afterReroll, '市场不再按天自动刷新');
+check(shopState.marketDay > marketDayBefore, '跨天后蛋贩子自动换货');
+check(JSON.stringify(shopState.market) !== afterReroll, '市场货物随日期推进更新');
+const decayedCost = L.marketRerollCost(shopState);
+check(decayedCost < nextCost, '换货费用随时间回落', `(${nextCost}→${decayedCost})`);
+
+shopState.gold = 10000;
+const c1 = L.marketRerollCost(shopState);
+L.rerollMarket(shopState);
+const c2 = L.marketRerollCost(shopState);
+L.rerollMarket(shopState);
+const c3 = L.marketRerollCost(shopState);
+check(c2 > c1 && c3 > c2, '连续换货费用逐次递增', `(${c1}→${c2}→${c3})`);
+L.tick(shopState, 3);
+check(L.marketRerollCost(shopState) < c3, '等待后换货费用降低', `(${c3}→${L.marketRerollCost(shopState)})`);
 shopState.gold = 0;
 check(L.rerollMarket(shopState).ok === false, '资金不足不能换货');
 
@@ -427,6 +452,7 @@ L.assignLab(struggleDeath, 0, sdMon.uid);
 sdMon.tolerance = CONFIG.labStruggleThreshold + 1;
 const sdEvents = L.tick(struggleDeath, 40);
 check(L.monByUid(struggleDeath, sdMon.uid) === null, '实验室挣扎耗尽会放生');
+check(!!struggleDeath.lab[0].corpse, '实验室挣扎死亡留下遗体占位');
 check(L.researchLostCount(struggleDeath, 16) === 1, '实验室挣扎计入研究损耗');
 check(sdEvents.some((e) => /实验台上挣扎/.test(e.msg)), '实验室挣扎死亡文案', sdEvents.map((e) => e.msg).join(' / '));
 
@@ -582,6 +608,16 @@ check(br3.stats.bred === 0 && br3.eggs.length === 0, '争斗不产蛋');
 check(fightEv.some((e) => e.type === 'warn'), '争斗有警告日志');
 check(fightEv.some((e) => e.msg.includes('伤重不治')), '争斗文案使用死亡表述');
 check(br3.breedFails?.length === 1 && br3.breedFails[0].kind === 'fight' && br3.breedFails[0].loser.dexId === 74, '配对失败写入记录');
+check(L.failedPair(br3, strong.dexId, 74) && L.failedPartners(br3, strong.dexId).has(74), '配对失败关系可查询');
+check(br3.failedPairs?.includes([strong.dexId, 74].sort((x, y) => x - y).join('-')), '失败组合永久记录，不受展示记录上限影响');
+const newGeodude = L.createMon(br3, 74, 5, { gender: 'm' });
+br3.mons.push(newGeodude);
+check(!L.assignPen(br3, 0, 'b', newGeodude.uid).ok, '曾配对失败的物种不能再次同栏');
+br3.pens[0] = { a: strong.uid, b: newGeodude.uid, breed: 999 };
+br3.eggs = [];
+const blockedEvents = L.tick(br3, 0.1);
+check(br3.eggs.length === 0 && br3.stats.fights === 1, '旧状态同栏也不会再繁育或争斗');
+check(blockedEvents.some((e) => e.failedPair), '同栏旧状态给出失败提示');
 const fightEvent = fightEv.find((e) => e.fight);
 check(fightEvent?.pen === 0, '争斗事件带栏位索引，供 UI 播放撞击动效');
 check(br3.stats.fights === 1, '争斗计数');
@@ -873,6 +909,86 @@ L.tick(decayState, 1);
 check(decayState.rep < repBeforeTick, '闲置流失会在 tick 中扣声望');
 
 check(CONFIG.orderRewardMultiplier < 1 && CONFIG.boardOrderRewardMultiplier > 2, '普通订单金币下调、总裁办上调');
+
+// 订单交付排除培育栏 / 实验室
+const delState = L.newGame(9400);
+const delOrder = {
+  id: 'odel', dept: 'research', kind: 'any', dexId: null, type: null, minLevel: 1, needNature: 0,
+  reward: 100, repGain: 4, deadline: delState.day + 5, created: delState.day,
+};
+delState.orders = [delOrder];
+const penCand = L.createMon(delState, 16, 5, { gender: 'm' });
+const labCand = L.createMon(delState, 16, 5, { gender: 'f' });
+delState.mons.push(penCand, labCand);
+L.assignPen(delState, 1, 'a', penCand.uid);
+L.assignLab(delState, 0, labCand.uid);
+check(!L.deliverableMons(delState, delOrder).some((m) => m.uid === penCand.uid), '培育栏个体不可交付');
+check(!L.deliverableMons(delState, delOrder).some((m) => m.uid === labCand.uid), '实验室个体不可交付');
+check(!L.deliver(delState, delOrder.id, penCand.uid).ok, '培育栏个体交付被拒绝');
+check(!L.deliver(delState, delOrder.id, labCand.uid).ok, '实验室个体交付被拒绝');
+L.removeFromPen(delState, penCand.uid);
+check(L.deliverableMons(delState, delOrder).some((m) => m.uid === penCand.uid), '移出培育栏后可交付');
+check(L.deliver(delState, delOrder.id, penCand.uid).ok, '闲置个体交付成功');
+
+// 实验死亡遗体占位与处理费用
+const corpseState = L.newGame(9500);
+const corpseMon = L.createMon(corpseState, 16, 60, { gender: 'm' });
+corpseState.mons.push(corpseMon);
+L.assignLab(corpseState, 0, corpseMon.uid);
+corpseMon.tolerance = 1;
+corpseState.gold = 1000;
+const corpseExp = L.experimentsFor(16)[0];
+const corpseRes = L.startExperiment(corpseState, corpseMon.uid, corpseExp.id);
+check(corpseRes.ok && corpseRes.released, '致死实验正常完成');
+check(L.monByUid(corpseState, corpseMon.uid) === null, '死亡个体从名单移除');
+check(!!corpseState.lab[0].corpse, '死亡个体留下遗体');
+check(L.labOccupied(corpseState) === 1, '遗体占用实验台');
+const blockedMon = L.createMon(corpseState, 16, 5, { gender: 'f' });
+corpseState.mons.push(blockedMon);
+check(!L.assignLab(corpseState, 0, blockedMon.uid).ok, '遗体占位时不能放新个体');
+const corpseCost = L.labProcessCost(corpseState, 0);
+check(corpseCost === CONFIG.labCorpseProcessCost, '遗体处理费用固定且较低', `(${corpseCost})`);
+const savedCorpse = deserialize(serialize(corpseState));
+check(!!savedCorpse.lab[0].corpse, '存档保留遗体');
+corpseState.gold = 0;
+check(!L.processLabSlot(corpseState, 0).ok, '资金不足不能处理');
+check(!!corpseState.lab[0].corpse, '处理失败遗体仍占位');
+corpseState.gold = 100;
+const goldBeforeCorpse = corpseState.gold;
+const processRes = L.processLabSlot(corpseState, 0);
+check(processRes.ok && corpseState.gold === goldBeforeCorpse - corpseCost, '处理遗体扣费');
+check(!corpseState.lab[0].corpse && L.labOccupied(corpseState) === 0, '处理后实验台空出');
+
+const livingCostState = L.newGame(9501);
+const livingMon = L.createMon(livingCostState, 16, 60, { gender: 'm' });
+livingCostState.mons.push(livingMon);
+L.assignLab(livingCostState, 0, livingMon.uid);
+const costHigh = L.labProcessCost(livingCostState, 0);
+livingMon.tolerance = 1;
+const costLow = L.labProcessCost(livingCostState, 0);
+check(costHigh > costLow, '活体处理费用随剩余耐受度提高', `(${costHigh}→${costLow})`);
+
+// 闪光 / 不孕不育
+check(CONFIG.shinyChance === 1 / 4096 && CONFIG.sterileChance === 2 / 4096, '闪光 1/4096、不孕不育 2/4096');
+const specialState = L.newGame(9600);
+const shinyMon = L.createMon(specialState, 16, 5, { gender: 'f', shiny: true, sterile: true });
+const normalMale = L.createMon(specialState, 16, 5, { gender: 'm' });
+specialState.mons.push(shinyMon, normalMale);
+check(shinyMon.shiny === true && shinyMon.sterile === true, '闪光与不孕可以共存');
+check(L.sterilityLabel(shinyMon) === '不孕', '雌性标注不孕');
+check(L.sterilityLabel(normalMale) === '', '正常雄性没有不育标记');
+const sterileComp = L.compatibility(specialState, shinyMon, normalMale);
+check(!sterileComp.ok && sterileComp.sterile === true, '不孕个体无法配种');
+specialState.pens = [{ a: shinyMon.uid, b: normalMale.uid, breed: 0 }];
+specialState.eggs = [];
+specialState.market = [];
+const sterileEvents = L.tick(specialState, 3);
+check(specialState.eggs.length === 0, '不孕配对不产蛋');
+check((specialState.stats.fights || 0) === 0, '不孕配对不触发争斗');
+check(sterileEvents.some((e) => e.sterile && e.msg.includes('不孕')), '不孕配对有明确提示');
+const specialRound = deserialize(serialize(specialState));
+check(specialRound.mons.find((m) => m.uid === shinyMon.uid)?.shiny === true, '存档保留闪光');
+check(specialRound.mons.find((m) => m.uid === shinyMon.uid)?.sterile === true, '存档保留不孕');
 
 // 市场与数值
 check(L.sellPrice(a) > 0 && L.sellPrice(a) < L.monValue(a), '售价低于估值');
