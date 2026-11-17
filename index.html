@@ -113,10 +113,9 @@
               <h3>闲置宝可梦</h3>
               <span class="hint" id="idle-hint"></span>
             </div>
-            <div id="idle-filters" class="idle-filters hidden">
-              <select id="idle-type-filter" aria-label="按属性筛选"></select>
-              <select id="idle-nature-filter" aria-label="按性格筛选"></select>
-              <button class="ghost" data-act="reset-idle-filters">重置</button>
+            <div id="idle-switch" class="idle-switch">
+              <button id="idle-tab-related" class="on" data-act="idle-section" data-section="related">培育相关</button>
+              <button id="idle-tab-others" data-act="idle-section" data-section="others">其它</button>
             </div>
             <div id="idle-alert" class="idle-alert hidden"></div>
             <div id="idle" class="idle-grid"></div>

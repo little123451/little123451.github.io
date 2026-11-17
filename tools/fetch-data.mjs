@@ -136,14 +136,12 @@ for (const chain of chains) flattenChain(chain.chain, null, evolutions);
 const dex = {};
 for (const { id, sp, pk } of pairs) {
   const zh = pickZh(sp.names) || sp.name;
-  const genusZh = pickZhField(sp.genera, 'genus') || '';
   const evoTo = evolutions.filter((e) => e.from === id);
   const evoFrom = evolutions.find((e) => e.to === id) || null;
   dex[id] = {
     id,
     name: sp.name,
     zh,
-    genus: genusZh,
     flavor: pickFlavor(sp),
     types: pk.types.slice().sort((a, b) => a.slot - b.slot).map((t) => t.type.name),
     stats: Object.fromEntries(pk.stats.map((s) => [statKey(s.stat.name), s.base_stat])),

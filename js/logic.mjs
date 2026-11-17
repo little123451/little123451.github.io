@@ -57,6 +57,36 @@ export function idleMons(state) {
   return state.mons.filter((m) => !active.has(m.uid));
 }
 
+// 某物种所在进化链的全部物种 id（含自身）
+export function evolutionChainIds(dexId) {
+  const root = baseDexId(dexId);
+  const seen = new Set();
+  const stack = [root];
+  while (stack.length) {
+    const id = Number(stack.pop());
+    if (seen.has(id) || !sp(id)) continue;
+    seen.add(id);
+    for (const e of sp(id).evolvesTo || []) stack.push(Number(e.id));
+  }
+  return [...seen];
+}
+
+// 围栏分组：
+//   A 培育相关 = 培育栏里出现的物种，以及它们进化链上的所有物种
+//   B 其它     = 不在 A 范围内的闲置个体
+export function idleSections(state) {
+  const relatedIds = new Set();
+  for (const m of penMons(state)) {
+    for (const id of evolutionChainIds(m.dexId)) relatedIds.add(id);
+  }
+  const all = idleMons(state);
+  return {
+    relatedIds,
+    related: all.filter((m) => relatedIds.has(m.dexId)),
+    others: all.filter((m) => !relatedIds.has(m.dexId)),
+  };
+}
+
 // 培育栏里的个体（按栏位顺序平铺）
 export function penMons(state) {
   const out = [];
@@ -67,6 +97,26 @@ export function penMons(state) {
     if (b) out.push(b);
   }
   return out;
+}
+
+// 把某个 uid 从它所在的栏位里摘掉（出售 / 交付 / 死亡 / 转入实验室共用）。
+// 只重置真正装着它的那一格：繁育条清零、提示作废，其它栏位不受影响。
+function detachFromPens(state, uidMon) {
+  for (const pen of state.pens) {
+    if (pen.a !== uidMon && pen.b !== uidMon) continue;
+    if (pen.a === uidMon) pen.a = null;
+    if (pen.b === uidMon) pen.b = null;
+    pen.breed = 0;
+    pen.notice = null;
+  }
+}
+
+// 按物种累计研究支出：实验行为 / 处理（活体与遗体）
+function addSpeciesSpend(state, dexId, kind, amount) {
+  if (!amount) return;
+  if (!state.speciesSpend) state.speciesSpend = {};
+  if (!state.speciesSpend[dexId]) state.speciesSpend[dexId] = { exp: 0, corpse: 0 };
+  state.speciesSpend[dexId][kind] += amount;
 }
 
 // ---------- 职级 ----------
@@ -254,9 +304,13 @@ export function createMon(state, dexId, level = 1, opts = {}) {
     ivs,
     // 出厂即满值；雄性上限是同物种、同等级雌性的 1.25 倍
     tolerance: toleranceCap(level, gender),
+    // 血统：祖先 uid 与代数（市场买来的蛋 / 初始个体都为空）
+    ancestors: opts.ancestors ? [...opts.ancestors] : [],
+    gen: opts.gen ?? 0,
     // 来源：跟着个体一辈子（市场进货渠道 / 培育栏自产 / 野外捕获）
     source: opts.source ?? null,
     origin: opts.origin ?? 'egg',
+    // 预留：出生日，目前没有读取方（可为将来的年龄 / 世代展示提供依据）
     born: Math.floor(state.day),
   };
 }
@@ -288,7 +342,8 @@ export function newGame(seed = (Date.now() % 2147483647) || 7) {  const state = 
     marketDay: 1,
     marketRerollCost: CONFIG.marketRefreshCost,
     inventory: { 'fire-stone': 0, 'water-stone': 0, 'thunder-stone': 0, 'leaf-stone': 0, 'moon-stone': 0 },
-    upgrades: { pens: CONFIG.startPens, lab: CONFIG.labSlotsBase, incubator: 0, feeder: 0, advertising: 0, training: 0 },
+    upgrades: { pens: CONFIG.startPens, lab: CONFIG.labSlotsBase, incubator: 0, advertising: 0, training: 0 },
+    // upgrades.pens / upgrades.lab 是预留字段：真实等级取自 state.pens.length / state.lab.length
     research: {},
     // 每个物种在研究过程中被实验损耗掉的个体数
     researchLoss: {},
@@ -320,8 +375,9 @@ export function newGame(seed = (Date.now() % 2147483647) || 7) {  const state = 
     },
     nextId: 1,
     nextMonNo: 1,
+    // 按物种累计的研究支出：{ 物种id: { exp: 实验花费, corpse: 处理花费 } }
+    speciesSpend: {},
     log: [],
-    feederTimer: 0,
     won: false,
     wonDay: null,
     quit: false,
@@ -468,7 +524,7 @@ export function failedPartners(state, dexId) {
 export const failedPair = (state, aDexId, bDexId) =>
   aDexId !== bDexId && failedPartners(state, aDexId).has(bDexId);
 
-export function compatibility(state, a, b) {
+export function compatibility(a, b) {
   if (!a || !b) return { ok: false, reason: '需要两只宝可梦' };
   if (a.uid === b.uid) return { ok: false, reason: '不能和自己配种' };
   const sa = sp(a.dexId);
@@ -572,10 +628,13 @@ function breedCostBearer(a, b) {
   return a;
 }
 
-// 争斗时比较“谁更弱”：先看等级，再看种族值
+// 争斗时比较“谁更弱”：先看等级，再看种族值，
+// 最后按 uid 的数值编号兜底（不能按字符串比，u10 会排在 u9 前面）
+const uidNo = (u) => Number(String(u).replace(/\D/g, '')) || 0;
+
 export function weakerOf(a, b) {
-  const rank = (m) => [m.level, bst(m.dexId), String(m.uid)];
-  const cmp = (x, y) => x[0] - y[0] || x[1] - y[1] || (x[2] < y[2] ? -1 : x[2] > y[2] ? 1 : 0);
+  const rank = (m) => [m.level, bst(m.dexId), uidNo(m.uid)];
+  const cmp = (x, y) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
   return cmp(rank(a), rank(b)) <= 0 ? [a, b] : [b, a];
 }
 
@@ -585,7 +644,23 @@ export function hatchDays(state, dexId) {
   return Math.max(1, +(base * (1 - 0.1 * state.upgrades.incubator)).toFixed(2));
 }
 
+// 血统：记录祖先 uid（上限 8 个，覆盖到曾祖辈）与代数。
+// 目前只写不读——等近亲机制上线后由 isKin() 使用（方案见 docs/kin-penalty.md）。
+function lineageOf(parents) {
+  if (!parents?.length) return { ancestors: [], gen: 0 };
+  const set = new Set();
+  let gen = 0;
+  for (const p of parents) {
+    if (!p) continue;
+    set.add(p.uid);
+    for (const a of p.ancestors || []) set.add(a);
+    gen = Math.max(gen, p.gen ?? 0);
+  }
+  return { ancestors: [...set].slice(0, 8), gen: gen + 1 };
+}
+
 function createEgg(state, dexId, parents, source = BRED_SOURCE) {
+  if (state.eggs.length >= eggSlots(state)) return null;
   const s = sp(dexId);
   const ivs = {};
   for (const k of STAT_KEYS) {
@@ -603,6 +678,8 @@ function createEgg(state, dexId, parents, source = BRED_SOURCE) {
     nature,
     gender: genderFromRate(state, s.genderRate),
     ability: pickOne(state, s.abilities),
+    // 血统跟着蛋 → 个体走完整个生命周期
+    ...lineageOf(parents),
     // 来源跟着蛋进来，孵出后继续跟着个体
     source: source || BRED_SOURCE,
   };
@@ -618,6 +695,8 @@ function hatch(state, egg, events) {
     nature: egg.nature,
     gender: egg.gender,
     ability: egg.ability,
+    ancestors: egg.ancestors,
+    gen: egg.gen,
     origin: 'egg',
     source: egg.source,
   });
@@ -688,9 +767,10 @@ export function buyEggOffer(state, idx) {
   if (!offer) return { ok: false, msg: '该商品已售出' };
   if (state.eggs.length >= eggSlots(state)) return { ok: false, msg: '孵化器已满' };
   if (state.gold < offer.price) return { ok: false, msg: '资金不足' };
+  const egg = createEgg(state, offer.dexId, null, offer.source || EGG_SOURCES[0]);
+  if (!egg) return { ok: false, msg: '孵化器已满' };
   state.gold -= offer.price;
   state.stats.spent += offer.price;
-  createEgg(state, offer.dexId, null, offer.source || EGG_SOURCES[0]);
   state.market.splice(idx, 1);
   return { ok: true, msg: `购买了一枚 ${sp(offer.dexId).zh} 的蛋` };
 }
@@ -828,10 +908,7 @@ export function deliver(state, orderId, uidMon) {
   if (labContains(state, uidMon)) return { ok: false, msg: '实验室里的宝可梦无法交付' };
   if (penIndex(state, uidMon) !== -1) return { ok: false, msg: '请先把宝可梦移出培育栏再交付' };
   state.mons = state.mons.filter((m) => m.uid !== uidMon);
-  for (const p of state.pens) {
-    if (p.a === uidMon) p.a = null;
-    if (p.b === uidMon) p.b = null;
-  }
+  detachFromPens(state, uidMon);
   state.gold += order.reward;
   state.stats.earned += order.reward;
   state.stats.delivered += 1;
@@ -867,10 +944,7 @@ export function sellMon(state, uidMon) {
   if (labContains(state, uidMon)) return { ok: false, msg: '实验室里的宝可梦无法出售' };
   const price = sellPrice(mon);
   state.mons = state.mons.filter((m) => m.uid !== uidMon);
-  for (const p of state.pens) {
-    if (p.a === uidMon) p.a = null;
-    if (p.b === uidMon) p.b = null;
-  }
+  detachFromPens(state, uidMon);
   state.gold += price;
   state.stats.earned += price;
   return { ok: true, msg: `卖出了 ${sp(mon.dexId).zh}，获得 ${price} 资金` };
@@ -933,10 +1007,7 @@ function leaveLabCorpse(state, mon, cause) {
   slot.uid = null;
   slot.corpse = { dexId: mon.dexId, no: mon.no, level: mon.level, gender: mon.gender, day: Math.floor(state.day), cause };
   state.mons = state.mons.filter((m) => m.uid !== mon.uid);
-  for (const p of state.pens) {
-    if (p.a === mon.uid) p.a = null;
-    if (p.b === mon.uid) p.b = null;
-  }
+  detachFromPens(state, mon.uid);
   state.stats.released = (state.stats.released || 0) + 1;
   return { ok: true, name, corpse: true, slot: idx };
 }
@@ -963,10 +1034,7 @@ function leaveIdleCorpse(state, mon) {
   });
   if (state.idleCorpses.length > 50) state.idleCorpses.length = 50;
   state.mons = state.mons.filter((m) => m.uid !== mon.uid);
-  for (const p of state.pens) {
-    if (p.a === mon.uid) p.a = null;
-    if (p.b === mon.uid) p.b = null;
-  }
+  detachFromPens(state, mon.uid);
   state.stats.released = (state.stats.released || 0) + 1;
 }
 
@@ -979,6 +1047,7 @@ export function processIdleCorpse(state, index) {
   state.gold -= cost;
   state.stats.spent = (state.stats.spent || 0) + cost;
   state.stats.corpseSpent = (state.stats.corpseSpent || 0) + cost;
+  addSpeciesSpend(state, corpse.dexId, 'corpse', cost);
   state.idleCorpses.splice(index, 1);
   return { ok: true, msg: `已处理 ${sp(corpse.dexId).zh} 的遗体`, cost };
 }
@@ -993,11 +1062,12 @@ export function processLabSlot(state, slotIdx) {
   }
   const cost = labProcessCost(state, slotIdx);
   if (state.gold < cost) return { ok: false, msg: `处理需要 ${cost} 资金` };
+  const corpse = !!slot.corpse;
+  const dexId = corpse ? slot.corpse.dexId : mon.dexId;
   state.gold -= cost;
   state.stats.spent = (state.stats.spent || 0) + cost;
-  const corpse = !!slot.corpse;
   if (corpse) state.stats.corpseSpent = (state.stats.corpseSpent || 0) + cost;
-  const dexId = corpse ? slot.corpse.dexId : mon.dexId;
+  addSpeciesSpend(state, dexId, 'corpse', cost);
   const no = corpse ? slot.corpse.no : mon.no;
   const level = corpse ? slot.corpse.level : mon.level;
   const tracked = !isResearched(state, dexId);
@@ -1007,10 +1077,7 @@ export function processLabSlot(state, slotIdx) {
   } else {
     const name = sp(mon.dexId).zh;
     state.mons = state.mons.filter((m) => m.uid !== mon.uid);
-    for (const p of state.pens) {
-      if (p.a === mon.uid) p.a = null;
-      if (p.b === mon.uid) p.b = null;
-    }
+    detachFromPens(state, mon.uid);
     state.stats.released = (state.stats.released || 0) + 1;
     if (tracked) bumpResearchLoss(state, mon.dexId);
     msg = `已处理 ${name}，实验台空出`;
@@ -1035,6 +1102,17 @@ export function assignLab(state, slotIdx, uidMon) {
   return { ok: true, msg: `${sp(mon.dexId).zh} 被送进了实验室（只能实验或处理）` };
 }
 
+// 培育栏详情页的「放入实验室」：先把它从栏位里摘出来，再按正常流程送进实验台。
+// assignLab 本身仍然只接受不在培育栏里的个体。
+export function sendPenToLab(state, uidMon, slotIdx) {
+  if (penIndex(state, uidMon) === -1) return { ok: false, msg: '它不在培育栏里' };
+  const slot = state.lab[slotIdx];
+  if (!slot) return { ok: false, msg: '实验室没有这个位置' };
+  if (slot.uid || slot.corpse) return { ok: false, msg: '该实验台已被占用（含死亡个体）' };
+  removeFromPen(state, uidMon);
+  return assignLab(state, slotIdx, uidMon);
+}
+
 export const RELEASE_TEXT = {
   exhausted: '耗尽了耐受度，倒下了',
   overload: '没能承受住实验，死在了实验台上',
@@ -1049,10 +1127,7 @@ export function releaseMon(state, uidMon, reason = 'manual') {
   const name = sp(mon.dexId).zh;
   state.mons = state.mons.filter((m) => m.uid !== uidMon);
   for (const slot of state.lab) if (slot.uid === uidMon) slot.uid = null;
-  for (const p of state.pens) {
-    if (p.a === uidMon) p.a = null;
-    if (p.b === uidMon) p.b = null;
-  }
+  detachFromPens(state, uidMon);
   state.stats.released = (state.stats.released || 0) + 1;
   const msg = `${name} ${RELEASE_TEXT[reason] || RELEASE_TEXT.manual}`;
   return { ok: true, msg, released: true, name };
@@ -1108,6 +1183,8 @@ function logLabProcess(state, dexId, no, level) {
 }
 
 function logLabDeath(state, mon, cause) {
+  // 该物种研究已满：不再往研究笔记里写任何实验日志
+  if (isResearched(state, mon.dexId)) return;
   if (!state.expJournal) state.expJournal = [];
   state.expJournal.unshift({
     day: Math.floor(state.day),
@@ -1157,7 +1234,8 @@ export function startExperiment(state, uidMon, experimentId) {
   if (loss > mon.tolerance) {
     bumpResearchLoss(state, mon.dexId);
     const resultText = pickExperimentResult(state, exp, false);
-    logExperimentRun(state, mon, exp, false, resultText, 'overload');
+    // 研究已满的物种不再写实验日志（noCd 此时就是"已完成研究"）
+    if (!noCd) logExperimentRun(state, mon, exp, false, resultText, 'overload');
     const r = leaveLabCorpse(state, mon, 'overload');
     return {
       ok: true,
@@ -1172,6 +1250,7 @@ export function startExperiment(state, uidMon, experimentId) {
   state.gold -= exp.cost;
   state.stats.spent += exp.cost;
   state.stats.experimentSpent = (state.stats.experimentSpent || 0) + exp.cost;
+  addSpeciesSpend(state, mon.dexId, 'exp', exp.cost);
   state.stats.experiments = (state.stats.experiments || 0) + 1;
   if (!noCd) {
     if (!state.expCd) state.expCd = {};
@@ -1231,7 +1310,7 @@ export function startExperiment(state, uidMon, experimentId) {
 
   if (willBeReleased) {
     const resultText = pickExperimentResult(state, exp, false);
-    logExperimentRun(state, mon, exp, false, resultText, 'exhausted', researchCompleted);
+    if (!noCd) logExperimentRun(state, mon, exp, false, resultText, 'exhausted', researchCompleted);
     const r = leaveLabCorpse(state, mon, 'exhausted');
     events.push({ type: 'warn', msg: `${name} 的耐受度耗尽，倒在了实验台上` });
     return {
@@ -1248,7 +1327,7 @@ export function startExperiment(state, uidMon, experimentId) {
   }
 
   const resultText = pickExperimentResult(state, exp, true);
-  logExperimentRun(state, mon, exp, true, resultText, null, researchCompleted);
+  if (!noCd) logExperimentRun(state, mon, exp, true, resultText, null, researchCompleted);
   return { ok: true, events, msg: `实验完成（${exp.name}）`, loss, intensity, result: { text: resultText, survived: true } };
 }
 
@@ -1368,7 +1447,7 @@ export function penStatus(state, pen) {
   if (a.dexId !== b.dexId && failedPair(state, a.dexId, b.dexId)) {
     return { kind: 'locked', a, b, reason: `${sp(a.dexId).zh} 与 ${sp(b.dexId).zh} 曾配对失败，不能继续同栏` };
   }
-  const comp = compatibility(state, a, b);
+  const comp = compatibility(a, b);
   if (comp.ok) {
     if (state.eggs.length >= eggSlots(state)) return { kind: 'waiting-egg', a, b };
     return { kind: 'breeding', a, b };
@@ -1385,7 +1464,7 @@ function fightReason(a, b, comp) {
   return `${sp(a.dexId).zh} 与 ${sp(b.dexId).zh} 合不来`;
 }
 
-function resolvePen(state, pen, events, penIndex = null) {
+function resolvePen(state, pen, events, penIdx = null) {
   const a = monByUid(state, pen.a);
   const b = monByUid(state, pen.b);
   if (!a || !b) {
@@ -1394,7 +1473,7 @@ function resolvePen(state, pen, events, penIndex = null) {
   }
   if (pen.breed < CONFIG.breedDays) return { kind: 'waiting' };
 
-  const comp = compatibility(state, a, b);
+  const comp = compatibility(a, b);
   if (comp.ok) {
     if (state.eggs.length >= eggSlots(state)) {
       // 孵化器满了，先憋着，不惩罚
@@ -1406,16 +1485,16 @@ function resolvePen(state, pen, events, penIndex = null) {
       // 承担损耗的一方撑不住这次繁育：本次失败，不产蛋，力竭而死
       const name = leavePenCorpse(state, bearer, 'exhausted', pen, penSlotOf(pen, bearer.uid));
       pen.breed = 0;
-      events.push({ type: 'warn', pen: penIndex, exhausted: true, msg: `${name} 在繁育中耗尽了耐受度，力竭而死` });
+      events.push({ type: 'warn', pen: penIdx, exhausted: true, msg: `${name} 在繁育中耗尽了耐受度，力竭而死` });
       return { kind: 'exhausted' };
     }
     bearer.tolerance -= CONFIG.breedToleranceCost;
     revealEggGroups(state, a, b);
     const dexId = childSpecies(a, b);
-    if (dexId) {
-      createEgg(state, dexId, [a, b]);
+    const egg = dexId ? createEgg(state, dexId, [a, b]) : null;
+    if (egg) {
       state.stats.bred += 1;
-      events.push({ type: 'egg', pen: penIndex, msg: `配种成功：孵化器中多了一枚 ${sp(dexId).zh} 的蛋` });
+      events.push({ type: 'egg', pen: penIdx, msg: `配种成功：孵化器中多了一枚 ${sp(dexId).zh} 的蛋` });
     }
     pen.breed = 0;
     return { kind: 'egg' };
@@ -1424,14 +1503,14 @@ function resolvePen(state, pen, events, penIndex = null) {
   // 不孕 / 不育：不会产蛋，但也不会因此争斗
   if (comp.sterile) {
     pen.breed = 0;
-    events.push({ type: 'warn', pen: penIndex, sterile: true, msg: `${comp.reason}，本次无法繁育` });
+    events.push({ type: 'warn', pen: penIdx, sterile: true, msg: `${comp.reason}，本次无法繁育` });
     return { kind: 'sterile' };
   }
 
   // 注定配不成但也不该打架（双百变怪 / 未发现蛋组 / 两个无性别）
   if (comp.quiet) {
     pen.breed = 0;
-    events.push({ type: 'info', pen: penIndex, quiet: true, msg: comp.reason });
+    events.push({ type: 'info', pen: penIdx, quiet: true, msg: comp.reason });
     return { kind: 'quiet' };
   }
 
@@ -1445,15 +1524,15 @@ function resolvePen(state, pen, events, penIndex = null) {
   leavePenCorpse(state, weak, 'fight', pen, penSlotOf(pen, weak.uid));
   state.stats.fights = (state.stats.fights || 0) + 1;
   pen.breed = 0;
-  events.push({ type: 'warn', pen: penIndex, fight: true, code: comp.code || 'other', msg: `${why}，争斗中 ${weakName} 伤重不治` });
+  events.push({ type: 'warn', pen: penIdx, fight: true, code: comp.code || 'other', msg: `${why}，争斗中 ${weakName} 伤重不治` });
   const survivor = monByUid(state, strong.uid);
   if (survivor) {
     survivor.tolerance -= CONFIG.fightToleranceLoss;
     if (survivor.tolerance <= 0) {
       leavePenCorpse(state, survivor, 'fight', pen, penSlotOf(pen, survivor.uid));
-      events.push({ type: 'warn', pen: penIndex, fight: true, msg: `${strongName} 也在争斗中耗尽了耐受度，伤重不治` });
+      events.push({ type: 'warn', pen: penIdx, fight: true, msg: `${strongName} 也在争斗中耗尽了耐受度，伤重不治` });
     } else {
-      events.push({ type: 'warn', pen: penIndex, fight: true, msg: `${strongName} 在争斗中受了伤` });
+      events.push({ type: 'warn', pen: penIdx, fight: true, msg: `${strongName} 在争斗中受了伤` });
     }
   }
   return { kind: 'fight' };
@@ -1562,23 +1641,6 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
   for (const egg of [...state.eggs]) {
     egg.daysLeft -= dtDays;
     if (egg.daysLeft <= 0) hatch(state, egg, events);
-  }
-
-  // 自动喂食
-  if (state.upgrades.feeder > 0) {
-    const interval = [0, 14, 9, 6][state.upgrades.feeder];
-    state.feederTimer += secs;
-    const due = Math.floor(state.feederTimer / interval);
-    if (due > 0) {
-      state.feederTimer -= due * interval;
-      const penMons = state.mons.filter((m) => inPen.has(m.uid));
-      for (let i = 0; i < due && state.candies > 0 && penMons.length; i++) {
-        const target = penMons[i % penMons.length];
-        state.candies -= 1;
-        target.exp += 40;
-        gainExp(state, target, 0, events);
-      }
-    }
   }
 
   // 围栏霸凌：同种同性达到 4 只后，从第四个起最弱的那只被持续霸凌

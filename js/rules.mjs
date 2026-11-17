@@ -8,6 +8,7 @@ export const CONFIG = {
   startGold: 1800,
   startCandies: 12,
   startPens: 3,
+  // 预留：栏位数量上限目前由 UPGRADE_INFO.pens.max 决定，这个常量留给后续设定使用
   maxPens: 8,
   maxLevel: 60,
   breedDays: 2.5,
@@ -34,6 +35,7 @@ export const CONFIG = {
   repDecayRamp: 0.1,
   maxEggsBase: 2,
   labSlotsBase: 2,
+  // 预留：实验台上限目前由 UPGRADE_INFO.lab.max 决定
   labSlotsMax: 4,
   toleranceBase: 100,
   // 耐受度上限随等级增长：Lv.1 为 100，每级 +2
@@ -198,7 +200,6 @@ export const UPGRADE_INFO = {
   pens: { name: '培育栏', max: 8, costs: [0, 0, 0, 2500, 5000, 9000, 15000, 24000], rankReq: [0, 0, 0, 1, 2, 3, 4, 5], desc: '增加可同时培育的空间' },
   lab: { name: '实验台', max: 4, costs: [0, 0, 2000, 5000], rankReq: [0, 0, 1, 3], desc: '增加实验室可同时研究的宝可梦' },
   incubator: { name: '孵化器', max: 4, costs: [1200, 2600, 5000, 9000], rankReq: [0, 1, 2, 3], desc: '每个等级加快 10% 孵化，并 +1 蛋位' },
-  feeder: { name: '自动喂食器', max: 3, costs: [1500, 3500, 7000], rankReq: [0, 1, 3], desc: '自动消耗经验糖果喂养栏位中的宝可梦' },
   advertising: { name: '广告牌', max: 3, costs: [2000, 4500, 8500], rankReq: [0, 1, 3], desc: '提升订单报酬，并 +1 订单位' },
   training: { name: '训练场', max: 3, costs: [1800, 4000, 8000], rankReq: [0, 1, 2], desc: '提升被动经验获取速度' },
 };

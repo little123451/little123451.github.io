@@ -2,7 +2,7 @@
 import * as L from './logic.mjs';
 import { CONFIG, RANKS, UPGRADE_INFO, ITEM_PRICES, maxTolerance, rankById } from './rules.mjs';
 import {
-  DEX, TYPES_ZH, sp, art, sprite, remoteSprite, typeZh, typeColor, calcStats, natureById, STAT_ZH,
+  DEX, sp, art, sprite, remoteSprite, typeZh, typeColor, calcStats, natureById, STAT_ZH,
   ITEM_ZH, STONE_ITEMS, itemIcon,
 } from './data.mjs';
 import { ensureSpeciesResults, speciesResultsLoaded } from './results.mjs';
@@ -64,8 +64,8 @@ export function setExperimentLoading(enabled = true, overrideMs = null) {
 // 底部 TAB：培育 / 实验室 / 围栏 / 经营 / 研究笔记
 const TABS = ['pens', 'lab', 'idle', 'market', 'dex'];
 let activeTab = 'pens';
-let idleTypeFilter = '';
-let idleNatureFilter = '';
+// 围栏分段开关：培育相关 / 其它
+let idleSection = 'related';
 
 // 结构签名：只有签名变化时才重建对应区域的 DOM，避免 hover 状态被反复重置
 const sig = {
@@ -86,6 +86,7 @@ const sig = {
 export function mount(state, options) {
   S = state;
   hooks = options || {};
+  seedLogs(state);
   resetSignatures();
   bind();
   render();
@@ -94,11 +95,10 @@ export function mount(state, options) {
 
 export function setState(next) {
   S = next;
-  idleTypeFilter = '';
-  idleNatureFilter = '';
+  idleSection = 'related';
   resetSignatures();
   activeTab = 'pens';
-  logs = [];
+  seedLogs(next);
   if (pendingExp?.timer) clearInterval(pendingExp.timer);
   pendingExp = null;
   closeModal();
@@ -151,9 +151,23 @@ export function toast(msg, kind = '') {
   }, 2200);
 }
 
+// 日志：内存里只留最近 40 条用于渲染，同时写进 state.log 以便刷新后回播。
+// state.log 里还有逻辑层写的内部记录（订单过期），回播时过滤掉。
+const LOG_LIMIT = 40;
+const LOG_STORE_LIMIT = 200;
+
+function seedLogs(state) {
+  const entries = Array.isArray(state?.log) ? state.log.filter((e) => e && e.type !== 'expire') : [];
+  logs = entries.slice(-LOG_LIMIT);
+}
+
 export function pushLog(msg, type = 'info') {
-  logs.push({ day: Math.floor(S.day), msg, type });
-  if (logs.length > 40) logs.splice(0, logs.length - 40);
+  const entry = { day: Math.floor(S.day), msg, type };
+  logs.push(entry);
+  if (logs.length > LOG_LIMIT) logs.splice(0, logs.length - LOG_LIMIT);
+  if (!Array.isArray(S.log)) S.log = [];
+  S.log.push({ ...entry });
+  if (S.log.length > LOG_STORE_LIMIT) S.log.splice(0, S.log.length - LOG_STORE_LIMIT);
 }
 
 export function handleEvents(events) {
@@ -200,17 +214,6 @@ function bind() {
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && modal) closeModal();
   });
-
-  document.addEventListener('change', (ev) => {
-    const id = ev.target?.id;
-    if (id !== 'idle-type-filter' && id !== 'idle-nature-filter') return;
-    if (id === 'idle-type-filter') idleTypeFilter = ev.target.value || '';
-    else idleNatureFilter = ev.target.value || '';
-    sig.idle = null;
-    render();
-  });
-
-  populateIdleFilters();
 }
 
 function handleAction(act, d) {
@@ -277,6 +280,20 @@ function handleAction(act, d) {
     case 'open-picker':
       openModal('picker', { pen: Number(d.pen), slot: d.slot });
       break;
+    case 'open-pen-lab':
+      openModal('penlab', { uid: d.uid });
+      break;
+    case 'pen-to-lab': {
+      const r = L.sendPenToLab(S, d.uid, Number(d.slot));
+      toast(r.msg, r.ok ? 'good' : 'bad');
+      if (r.ok) {
+        const mon = L.monByUid(S, d.uid);
+        if (mon) ensureSpeciesResults(mon.dexId).catch(() => {});
+      }
+      closeModal();
+      render();
+      break;
+    }
     case 'assign': {
       const r = L.assignPen(S, Number(d.pen), d.slot, d.uid);
       toast(r.msg, r.ok ? 'good' : 'bad');
@@ -354,12 +371,15 @@ function handleAction(act, d) {
       beginExperiment(d.uid, d.exp);
       break;
     }
-    case 'reset-idle-filters':
-      idleTypeFilter = '';
-      idleNatureFilter = '';
-      syncIdleFilters();
+    case 'idle-section': {
+      const next = d.section === 'others' ? 'others' : 'related';
+      if (next !== idleSection) {
+        idleSection = next;
+        sig.idle = null;
+      }
       render();
       break;
+    }
     case 'process-idle-corpse': {
       const r = L.processIdleCorpse(S, Number(d.index));
       toast(r.msg, r.ok ? 'good' : 'bad');
@@ -675,6 +695,9 @@ function patchSlot(mon, pen, slot) {
   setText(el(`pen-${pen}-${slot}-lv`), `Lv.${mon.level}`);
   setWidth(el(`pen-${pen}-${slot}-exp`), pct(mon.exp, L.expNeeded(mon.level, s.growthRate)));
   applyToleranceFilter(el(`pen-${pen}-${slot}-img`), mon);
+  // 研究完成会改变卡片底色，这里实时切换，不再等结构签名变化
+  const card = el(`pen-${pen}-${slot}`);
+  if (card) card.classList.toggle('researched', L.isResearched(S, mon.dexId));
 }
 
 function playPenEffect(index, kind) {
@@ -818,6 +841,8 @@ function patchLab() {
     setText(el(`lab-${i}-res`), `${pctRes}%`);
     setWidth(el(`lab-${i}-resbar`), pctRes);
     applyToleranceFilter(el(`lab-${i}-img`), mon);
+    const card = el(`lab-${i}`);
+    if (card) card.classList.toggle('researched', L.isResearched(S, mon.dexId));
   });
 }
 
@@ -954,48 +979,27 @@ function playLabHit(uid, intensity = 0.5) {
 }
 
 // ---------- 围栏（不在培育栏、也不在实验室的闲置宝可梦） ----------
-function idleFilterEnabled(all = L.idleMons(S)) {
-  return all.length > 5;
-}
-
-function filteredIdleMons() {
-  const all = L.idleMons(S);
-  if (!idleFilterEnabled(all)) return all;
-  return all.filter((m) => {
-    const types = sp(m.dexId)?.types || [];
-    if (idleTypeFilter && !types.includes(idleTypeFilter)) return false;
-    if (idleNatureFilter && m.nature !== idleNatureFilter) return false;
-    return true;
-  });
-}
-
-function syncIdleFilters() {
-  const typeSel = el('idle-type-filter');
-  if (typeSel) typeSel.value = idleTypeFilter;
-  const natureSel = el('idle-nature-filter');
-  if (natureSel) natureSel.value = idleNatureFilter;
-}
-
-function populateIdleFilters() {
-  const typeSel = el('idle-type-filter');
-  if (typeSel) {
-    typeSel.innerHTML = '<option value="">全部属性</option>' +
-      Object.entries(TYPES_ZH).map(([id, zh]) => `<option value="${id}">${zh}</option>`).join('');
-  }
-  const natureSel = el('idle-nature-filter');
-  if (natureSel) {
-    natureSel.innerHTML = '<option value="">全部性格</option>' +
-      DEX.natures.map((n) => `<option value="${n.id}">${n.zh}</option>`).join('');
-  }
-  syncIdleFilters();
-}
-
+// 用开关在「培育相关」与「其它」之间切换；遗体单独一栏，始终显示。
 function idleSignature() {
   const mons = L.idleMons(S)
     .map((m) => `${m.uid}:${m.dexId}:${knownKey(m.dexId)}`)
     .join('|');
   const corpses = (S.idleCorpses || []).map((c, i) => `${i}:${c.no}:${c.dexId}:${c.level}`).join(',');
-  return `${mons}|c:${corpses}|f:${idleTypeFilter}:${idleNatureFilter}`;
+  const related = [...L.idleSections(S).relatedIds].sort((a, b) => a - b).join(',');
+  return `${mons}|c:${corpses}|r:${related}|s:${idleSection}`;
+}
+
+function idleMonCard(m, bullyUids) {
+  const spc = sp(m.dexId);
+  const fighting = bullyUids.has(m.uid);
+  return `<div class="idle-mon${fighting ? ' fighting' : ''}${m.shiny ? ' shiny' : ''}${researchedCls(m)}" id="idle-${m.uid}" data-act="open-mon" data-uid="${m.uid}" title="查看详情">
+    ${monNoTag(m)}
+    <img id="idle-${m.uid}-img" src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="${spc.zh}" />
+    <div class="n">${spc.zh}<span class="g">${L.genderZh(m.gender)}</span>${m.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
+    <div class="lv" id="idle-${m.uid}-lv">Lv.${m.level}</div>
+    <div class="egg-grp">${L.eggGroupsDisplay(S, m.dexId)}</div>
+    ${L.sterilityLabel(m) ? `<div class="sterile-badge">${L.sterilityLabel(m)}</div>` : ''}
+  </div>`;
 }
 
 function ensureIdle() {
@@ -1004,36 +1008,17 @@ function ensureIdle() {
   sig.idle = s;
   const host = $('#idle');
   if (!host) return;
-  const all = L.idleMons(S);
-  const enabled = idleFilterEnabled(all);
-  const filterHost = $('#idle-filters');
-  if (filterHost) filterHost.classList.toggle('hidden', !enabled);
-  if (!enabled && (idleTypeFilter || idleNatureFilter)) {
-    idleTypeFilter = '';
-    idleNatureFilter = '';
-    syncIdleFilters();
-  }
-  const list = enabled ? filteredIdleMons() : all;
+  const { related, others } = L.idleSections(S);
   const corpses = S.idleCorpses || [];
   const bullyUids = new Set(L.idleConflicts(S).map((c) => c.weakestUid));
-  if (!list.length && !corpses.length) {
-    host.innerHTML = `<div class="empty-tip">${all.length ? '没有符合筛选条件的宝可梦。' : '围栏是空的——所有宝可梦都在培育栏或实验室里。'}</div>`;
+  if (!related.length && !others.length && !corpses.length) {
+    host.innerHTML = '<div class="empty-tip">围栏是空的——所有宝可梦都在培育栏或实验室里。</div>';
     return;
   }
-  const monsHtml = list
-    .map((m) => {
-      const spc = sp(m.dexId);
-      const fighting = bullyUids.has(m.uid);
-      return `<div class="idle-mon${fighting ? ' fighting' : ''}${m.shiny ? ' shiny' : ''}${researchedCls(m)}" id="idle-${m.uid}" data-act="open-mon" data-uid="${m.uid}" title="查看详情">
-        ${monNoTag(m)}
-        <img id="idle-${m.uid}-img" src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="${spc.zh}" />
-        <div class="n">${spc.zh}<span class="g">${L.genderZh(m.gender)}</span>${m.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
-        <div class="lv" id="idle-${m.uid}-lv">Lv.${m.level}</div>
-        <div class="egg-grp">${L.eggGroupsDisplay(S, m.dexId)}</div>
-        ${L.sterilityLabel(m) ? `<div class="sterile-badge">${L.sterilityLabel(m)}</div>` : ''}
-      </div>`;
-    })
-    .join('');
+  const sec = (key, list) =>
+    `<div class="idle-sec${idleSection === key ? '' : ' hidden'}" data-sec="${key}">${
+      list.length ? list.map((m) => idleMonCard(m, bullyUids)).join('') : '<div class="empty-tip">这一段还没有宝可梦。</div>'
+    }</div>`;
   const corpseHtml = corpses
     .map((c, i) => {
       const spc = sp(c.dexId);
@@ -1047,26 +1032,44 @@ function ensureIdle() {
       </div>`;
     })
     .join('');
-  host.innerHTML = monsHtml + corpseHtml;
+  host.innerHTML =
+    sec('related', related) +
+    sec('others', others) +
+    (corpses.length
+      ? `<div class="idle-sec" data-sec="corpse"><div class="idle-sec-title">遗体<span>${corpses.length} 具待处理</span></div>${corpseHtml}</div>`
+      : '');
 }
 
 function patchIdle() {
-  const all = L.idleMons(S);
-  const list = idleFilterEnabled(all) ? filteredIdleMons() : all;
+  const { related, others } = L.idleSections(S);
   const corpses = S.idleCorpses || [];
   const conflicts = L.idleConflicts(S);
+
+  const tabRelated = el('idle-tab-related');
+  if (tabRelated) {
+    setText(tabRelated, `培育相关（${related.length}）`);
+    tabRelated.classList.toggle('on', idleSection === 'related');
+  }
+  const tabOthers = el('idle-tab-others');
+  if (tabOthers) {
+    setText(tabOthers, `其它（${others.length}）`);
+    tabOthers.classList.toggle('on', idleSection === 'others');
+  }
+
   const hint = $('#idle-hint');
   if (hint) {
-    const filtered = all.length > 5 && (idleTypeFilter || idleNatureFilter);
     const extra = conflicts.length ? ` · ${conflicts.length} 组霸凌` : ' · 不参与繁育与研究';
-    hint.textContent = `${filtered ? `${list.length}/${all.length}` : all.length} 只闲置${corpses.length ? ` · ${corpses.length} 具遗体` : ''}${extra}`;
+    hint.textContent = `${related.length + others.length} 只闲置${corpses.length ? ` · 遗体 ${corpses.length} 具` : ''}${extra}`;
   }
   const bullyUids = new Set(conflicts.map((c) => c.weakestUid));
-  for (const m of list) {
+  for (const m of [...related, ...others]) {
     setText(el(`idle-${m.uid}-lv`), `Lv.${m.level}`);
     applyToleranceFilter(el(`idle-${m.uid}-img`), m);
     const card = el(`idle-${m.uid}`);
-    if (card) card.classList.toggle('fighting', bullyUids.has(m.uid));
+    if (card) {
+      card.classList.toggle('fighting', bullyUids.has(m.uid));
+      card.classList.toggle('researched', L.isResearched(S, m.dexId));
+    }
   }
 
   // 同种同性达到 4 只后，最弱的那只会被霸凌
@@ -1266,7 +1269,6 @@ function upgradesSignature() {
     S.lab.length,
     S.rank ?? 0,
     S.upgrades.incubator,
-    S.upgrades.feeder,
     S.upgrades.advertising,
     S.upgrades.training,
   ].join(':');
@@ -1346,6 +1348,7 @@ function renderModal() {
   if (modal.type === 'mon') root.innerHTML = monModalHtml(modal.uid);
   else if (modal.type === 'species') root.innerHTML = speciesModalHtml(modal.id);
   else if (modal.type === 'picker') root.innerHTML = pickerModalHtml(modal.pen, modal.slot);
+  else if (modal.type === 'penlab') root.innerHTML = penLabPickerModalHtml(modal.uid);
   else if (modal.type === 'deliver') root.innerHTML = deliverModalHtml(modal.orderId);
   else if (modal.type === 'labexp') root.innerHTML = labExpModalHtml(modal.uid);
   else if (modal.type === 'resultsload') root.innerHTML = resultsLoadingModalHtml();
@@ -1397,7 +1400,8 @@ function monModalHtml(uid) {
   // 围栏里的个体不再给“放入栏位”快捷按钮：统一从培育栏空位的「放入宝可梦」进入
   const penButtons =
     !inLab && inPen >= 0
-      ? `<button class="ghost" data-act="unassign" data-uid="${mon.uid}">移出栏位 ${inPen + 1}</button>`
+      ? `<button class="ghost" data-act="open-pen-lab" data-uid="${mon.uid}">放入实验室</button>
+         <button class="ghost" data-act="unassign" data-uid="${mon.uid}">扔回围栏</button>`
       : '';
   const idleHint =
     !inLab && inPen < 0
@@ -1424,11 +1428,6 @@ function monModalHtml(uid) {
        ${penButtons}
        <button class="ghost danger" data-act="sell" data-uid="${mon.uid}">出售 🪙 ${fmt(L.sellPrice(mon))}</button>`;
 
-  const statNote =
-    revealed.size < 6
-      ? `<div class="hint-line">能力值随该物种的研究进度逐项披露，顺序按种族值从高到低。</div>`
-      : '';
-
   return modalShell(
     s.zh,
     `
@@ -1437,7 +1436,6 @@ function monModalHtml(uid) {
       <div class="detail-meta">
         <div class="kv"><span class="k">编号</span><span class="v" style="font-variant-numeric:tabular-nums">${monNo(mon) || '未编号'}</span></div>
         <div class="kv"><span class="k">属性</span><span class="v">${typeBadges(s.types)}</span></div>
-        <div class="kv"><span class="k">分类</span><span class="v">${s.genus || '—'}</span></div>
         <div class="kv"><span class="k">等级</span><span class="v">Lv.${mon.level} <span style="color:var(--muted);font-weight:400">(${fmt(mon.exp)}/${fmt(need)} 经验)</span></span></div>
         <div class="bar exp" style="max-width:230px"><i style="width:${pct(mon.exp, need)}%"></i></div>
         <div class="kv"><span class="k">性别</span><span class="v">${L.genderZh(mon.gender)}　性格 ${nat.zh}</span></div>
@@ -1448,9 +1446,8 @@ function monModalHtml(uid) {
       </div>
     </div>
 
-    <div class="section-title">能力值（已披露 ${revealed.size}/6）</div>
+    <div class="section-title">能力值</div>
     <div class="stats-grid">${statRows}</div>
-    ${statNote}
 
     <div class="section-title">进化路线</div>
     ${evoHtml}
@@ -1478,16 +1475,17 @@ function speciesModalHtml(dexId) {
   const statRows = Object.keys(STAT_ZH)
     .map((k) => statRowHtml(k, s.stats?.[k] ?? 0, revealed.has(k)))
     .join('');
+  const spend = S.speciesSpend?.[dexId] || { exp: 0, corpse: 0 };
   return modalShell(
     `${name} <span style="color:var(--muted);font-size:12px">#${String(dexId).padStart(3, '0')}</span>`,
     `<div class="species-card">
       <div class="species-art ${done ? '' : 'gray'}"><img src="${art(dexId)}"${imgFallback(dexId)} alt="" /></div>
       <div class="species-meta">
-        <div class="kv"><span class="k">分类</span><span class="v">${known ? esc(s.genus || '—') : '???'}</span></div>
         <div class="kv"><span class="k">属性</span><span class="v">${known ? typeBadges(s.types) : '???'}</span></div>
         <div class="kv"><span class="k">研究进度</span><span class="v">${done ? '完成' : `${percent}%`}</span></div>
         <div class="bar study" style="max-width:230px"><i style="width:${done ? 100 : percent}%"></i></div>
         <div class="kv"><span class="k">研究损耗</span><span class="v">${lost} 只</span></div>
+        <div class="kv"><span class="k">研究成本</span><span class="v">🪙 ${fmt(spend.exp + spend.corpse)}</span></div>
         ${done && rec ? `<div class="kv"><span class="k">完成于</span><span class="v">第 ${rec.day} 天</span></div>` : ''}
       </div>
     </div>
@@ -1500,34 +1498,59 @@ function speciesModalHtml(dexId) {
         ? `<p class="flavor">${esc(flavor || '（这条研究笔记还没有留下描述。）')}</p>`
         : `<p class="flavor locked">完成「${name}」的研究后，这里会补上你写下的描述。</p>`
     }
-    ${
-      done && rec
-        ? `<div class="kv" style="margin-top:10px"><span class="k">研究损耗</span><span class="v">${lost} 只</span></div>`
-        : ''
-    }
     <div class="section-title">实验日志</div>
     <div class="exp-journal">${expJournalRowsHtml(dexId, 10)}</div>`,
     `<span class="hint" style="font-size:11px;color:var(--muted)">研究笔记 #${String(dexId).padStart(3, '0')}</span>`
   );
 }
 
+// 实验日志：同一个体（编号）的多条记录在视觉上合并成一组，
+// 组头只出现一次编号/物种/等级，组内按时间从新到旧列实验。
 function expJournalRowsHtml(dexId = null, limit = 50) {
-  const rows = (S.expJournal || [])
-    .filter((e) => dexId == null || e.dexId === dexId)
-    .slice(0, limit)
-    .map((e) => {
-      const name = sp(e.dexId)?.zh || e.dexId;
-      return `<div class="exp-journal-row ${e.survived ? 'alive' : 'dead'}${e.completed ? ' completed' : ''}">
-        <span class="d">D${e.day}</span>
-        <span class="who">对 #${String(e.no ?? '—').padStart(4, '0')} ${name}（Lv.${e.level}）</span>
-        <span class="act">进行了「${esc(e.expName)}」</span>
-        <span class="res">：${esc(e.result)}</span>
-        ${!e.survived && !['process', 'lab-death', 'bully-death'].includes(e.expId) ? '<span class="exp-journal-death">实验结束后对象死亡</span>' : ''}
-        ${e.completed ? `<span class="complete">对${name}的研究完成了</span>` : ''}
+  const entries = (S.expJournal || []).filter((e) => dexId == null || e.dexId === dexId).slice(0, limit);
+  if (!entries.length) return '<div class="empty-tip">还没有实验日志。</div>';
+
+  const groups = [];
+  const byNo = new Map();
+  for (const e of entries) {
+    const key = e.no == null ? 'none' : String(e.no);
+    let g = byNo.get(key);
+    if (!g) {
+      g = { no: e.no, dexId: e.dexId, level: e.level, rows: [] };
+      byNo.set(key, g);
+      groups.push(g);
+    }
+    g.rows.push(e);
+  }
+
+  const rowHtml = (e) => {
+    const name = sp(e.dexId)?.zh || e.dexId;
+    const exp = L.experimentsFor(e.dexId).find((x) => x.id === e.expId);
+    const act = exp?.desc ? `「${esc(exp.desc)}」` : `「${esc(e.expName)}」`;
+    return `<div class="exp-journal-row ${e.survived ? 'alive' : 'dead'}${e.completed ? ' completed' : ''}">
+      <span class="d">D${e.day}</span>
+      <span class="act">${act}</span>
+      <span class="res">：${esc(e.result)}</span>
+      ${!e.survived && !['process', 'lab-death', 'bully-death'].includes(e.expId) ? '<span class="exp-journal-death">实验结束后对象死亡</span>' : ''}
+      ${e.completed ? `<span class="complete">对${name}的研究完成了</span>` : ''}
+    </div>`;
+  };
+
+  return groups
+    .map((g) => {
+      const name = sp(g.dexId)?.zh || g.dexId;
+      const noText = g.no == null ? '未编号' : `#${String(g.no).padStart(4, '0')}`;
+      return `<div class="exp-journal-group">
+        <div class="exp-journal-head">
+          <span class="no">${noText}</span>
+          <span class="nm">${name}</span>
+          <span class="lv">Lv.${g.level}</span>
+          <span class="cnt">${g.rows.length} 次</span>
+        </div>
+        ${g.rows.map(rowHtml).join('')}
       </div>`;
     })
     .join('');
-  return rows || '<div class="empty-tip">还没有实验日志。</div>';
 }
 
 function pickerModalHtml(penIdx, slot) {
@@ -1556,6 +1579,31 @@ function pickerModalHtml(penIdx, slot) {
   return modalShell(
     `选择宝可梦 → 栏位 ${penIdx + 1}${other ? `（与 ${sp(other.dexId).zh} 配对）` : ''}`,
     `<div class="picker-list">${body || '<div class="empty-tip">没有空闲的宝可梦；实验室里的和已在其他栏位的都不能放入。</div>'}</div>`
+  );
+}
+
+// 从培育栏直接送进实验室：只列实验台（空位可选，占用/遗体禁用）
+function penLabPickerModalHtml(uid) {
+  const mon = L.monByUid(S, uid);
+  if (!mon) return modalShell('找不到宝可梦', '<p>它可能已经被交付或卖出。</p>');
+  const rows = S.lab
+    .map((slot, i) => {
+      const occupant = L.monByUid(S, slot.uid);
+      const busy = !!slot.uid || !!slot.corpse;
+      const label = occupant
+        ? `已被 ${sp(occupant.dexId).zh} 占用`
+        : slot.corpse
+          ? `有遗体（${sp(slot.corpse.dexId).zh}），需先处理`
+          : '空位';
+      return `<button class="ghost slot-row" data-act="pen-to-lab" data-uid="${uid}" data-slot="${i}" ${busy ? 'disabled' : ''}>
+        <b>实验台 ${i + 1}</b><span>${label}</span>
+      </button>`;
+    })
+    .join('');
+  return modalShell(
+    `把 ${sp(mon.dexId).zh} 送进实验室`,
+    `<p class="hint" style="font-size:12px;color:#ffb3ba;margin-bottom:10px">进去后就取不出来了，只能实验或处理。</p>
+     <div class="slot-list">${rows}</div>`
   );
 }
 
@@ -1693,7 +1741,7 @@ function labPickerModalHtml(slot) {
   return modalShell(
     `选择实验对象 → 实验台 ${slot + 1}`,
     `<p class="hint" style="font-size:12px;color:#ffb3ba;margin-bottom:10px">选中即送入实验室。进去后就取不出来了，只能实验或处理；处理需要花金币，死亡个体也会占位。</p>
-     <div class="picker-list">${body || '<div class="empty-tip">没有空闲的宝可梦；培育栏里的需要先移出。</div>'}</div>`
+     <div class="picker-list">${body || '<div class="empty-tip">没有空闲的宝可梦；培育栏里的个体可以在它的详情页点「放入实验室」。</div>'}</div>`
   );
 }
 
@@ -1711,8 +1759,7 @@ function dexCellsHtml() {
       if (!known) {
         bits.push('尚未研究');
       } else {
-        bits.push(`${s.zh} · ${s.genus} · 研究 ${progress}%`);
-        bits.push(`已损耗 ${lost} 只`);
+        bits.push(`${s.zh} · 研究 ${progress}%`);
         if (done && rec) bits.push(`完成于第 ${rec.day} 天`);
       }
       const title = bits.join(' · ');
@@ -1845,8 +1892,8 @@ function helpModalHtml() {
         <li><b>繁育</b>：栏位里放两只就会积累繁育条。条满时如果条件正常（一雄一雌、蛋组交叠）就会产蛋，母体因此损耗耐受度（低等级母体大约撑 3 只后代，等级越高越耐用）；没有雌性时由<b>百变怪</b>承担损耗，雄性不掉耐受度。条件不正常，两只就会争斗——<b>较弱的那只阵亡</b>，另一只受伤；只有同性、蛋组不匹配会真的打起来，文案会点明原因。<b>两只百变怪</b>与<b>未发现蛋组的物种</b>放不进同一栏；<b>无性别</b>的宝可梦不会跟任何配对打起来，只会静默地配不上。争斗与力竭死亡会在培育栏留下<b>遗体</b>，要花金币处理才能放新的。新个体有 <b>1/4096</b> 概率闪光，<b>2/4096</b> 概率不孕（♀）/不育（♂）；不孕不育无法配种，但不会因此争斗。只有异性且蛋组不匹配导致的配对失败会锁定物种组合，可以在选择列表里<b>免费解除</b>；同性争斗、力竭等其他失败不记录，也不锁定。</li>
         <li><b>蛋组</b>：博士一开始并不知道任何宝可梦的蛋组，界面上只显示 ???。只有亲手繁育出蛋，才会确认两边交汇的那个蛋组。</li>
         <li><b>孵化</b>：蛋在孵化器中倒计时，孵出的永远是该家族的<b>最初形态</b>；孵化步数越高越慢，升级孵化器可加速并增加蛋位。孵出后默认进<b>围栏</b>，要自己放进培育栏。蛋位满了繁育会暂停，培育栏会提示原因。</li>
-        <li><b>养成</b>：栏位中的宝可梦会持续获得经验，喂<b>经验糖果</b>可加速成长；不在栏位也不在实验室的会待在<b>围栏</b>里。围栏超过 5 只时可按属性/性格筛选。围栏里同种同性达到 4 只后，最弱的那只会被持续霸凌、耐受度下降；移走一只即可停止。霸凌致死会留下遗体，需要花金币处理。</li>
-        <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的研究笔记条目，<b>没有免费的实验</b>。每种实验都有冷却，越深入的实验冷却越久（最长 30 秒）；该物种研究完成后冷却取消。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽死亡，或花金币处理；死亡的实验对象会留下遗体，同样占用实验台，必须付费处理才能空出；实验具体影响不会事先显示。已执行过的行为会标“已记录”。每次实验会先播放加载条，再展示实验结果与实验日志；手动处理活体会记入日志和损耗，研究满 100% 后不再记录；死亡后的遗体处理不重复记录。</li>
+        <li><b>养成</b>：栏位中的宝可梦会持续获得经验，喂<b>经验糖果</b>可加速成长；不在栏位也不在实验室的会待在<b>围栏</b>里。围栏顶部用开关在「培育相关」（培育栏物种及其进化链）与「其它」之间切换，一次只显示一段；霸凌致死留下的遗体单独放在「遗体」栏。围栏里同种同性达到 4 只后，最弱的那只会被持续霸凌、耐受度下降；移走一只即可停止。霸凌致死会留下遗体，需要花金币处理。</li>
+        <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的研究笔记条目，<b>没有免费的实验</b>。每种实验都有冷却，越深入的实验冷却越久（最长 30 秒）；该物种研究完成后冷却取消。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽死亡，或花金币处理；死亡的实验对象会留下遗体，同样占用实验台，必须付费处理才能空出；实验具体影响不会事先显示。已执行过的行为会标“已记录”。每次实验会先播放加载条，再展示实验结果与实验日志；手动处理活体会记入日志和损耗。<b>该物种研究 100% 之后不再记录任何实验日志</b>，死亡后的遗体处理也不重复记录。</li>
         <li><b>耐受度</b>：上限随等级提高（Lv.1 为 100，每级 +2），<b>雄性再乘 1.25</b>；出厂即满，但只有进了实验室才能在界面上看到。繁育、争斗、霸凌、实验都会消耗它，归零即死亡：实验室个体留下遗体占位，围栏里被霸凌致死的个体留下遗体等待处理，培育栏里死亡的个体也会留下遗体（需付费处理），其他情况离队。物种研究完成后，只剩最伤身的那种实验还能用。</li>
         <li><b>能力值</b>：刚接触的物种看不全能力值。随着该物种的研究进度，能力项会按种族值从高到低逐项披露。</li>
         <li><b>研究笔记</b>：研究过的物种会显示灰度图标和进度，100% 完成后才变成彩色；已完成条目会记录完成日期与损耗掉的个体数，物种详情和研究笔记页还会显示最近的实验日志（含处理记录）。</li>

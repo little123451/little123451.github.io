@@ -360,10 +360,10 @@ const starter = state.mons[0];
 click('open-mon', { uid: starter.uid });
 check(makeEl('#modal').innerHTML.includes('能力值'), '详情弹窗含能力值');
 check(!makeEl('#modal').innerHTML.includes('特性'), '详情弹窗暂不展示特性');
-check(makeEl('#modal').innerHTML.includes('已披露 0/6'), '未研究的物种能力值未披露');
+check(makeEl('#modal').innerHTML.includes('能力值') && !makeEl('#modal').innerHTML.includes('已披露'), '能力值不再显示披露数量');
 check(!makeEl('#modal').innerHTML.includes('个体值'), '详情弹窗不展示个体值');
 check(makeEl('#modal').innerHTML.includes('进化路线'), '详情弹窗含进化路线');
-check(makeEl('#modal').innerHTML.includes('移出栏位'), '培育栏个体仍可移出栏位');
+check(makeEl('#modal').innerHTML.includes('扔回围栏'), '培育栏个体可扔回围栏');
 const lv0 = starter.level;
 const exp0 = starter.exp;
 const candies0 = state.candies;
@@ -569,8 +569,10 @@ check(makeEl('#dex-page').innerHTML.includes('实验行为消耗') && makeEl('#d
 check(makeEl('#dex-page').innerHTML.includes('遗体处理消耗') && makeEl('#dex-page').innerHTML.includes('56'), '研究笔记显示遗体处理总消耗');
 check(makeEl('#dex-page').innerHTML.includes('1,290'), '研究笔记显示实验总成本');
 check(makeEl('#dex-page').innerHTML.includes('实验日志'), '研究笔记显示实验日志区');
-check(makeEl('#dex-page').innerHTML.includes('组织采样') || makeEl('#dex-page').innerHTML.includes('对战测试'), '实验日志包含行为记录');
-check(makeEl('#dex-page').innerHTML.includes('实验结束后对象死亡'), '实验日志死亡记录显示统一死亡结语');
+// 日志条目展示的是实验行为描述，而不是行为名称
+check(makeEl('#dex-page').innerHTML.includes(sampleDesc), '实验日志展示实验行为描述');
+check(!(state.expJournal || []).some((e) => e.expId === 'sp16-stress-threshold' && !e.survived), '研究满后死亡不再写入日志');
+check(!makeEl('#dex-page').innerHTML.includes('实验结束后对象死亡'), '研究满后日志不显示死亡结语');
 check(makeEl('#dex-page').innerHTML.includes('处理'), '实验日志包含被处理记录');
 click('tab', { tab: 'pens' });
 
@@ -627,12 +629,15 @@ UI.render();
 check(makeEl('#dex-page').innerHTML.includes(`对${sp(25).zh}的研究完成了`), '研究完成日志显示完成文案');
 check(makeEl('#dex-page').innerHTML.includes('completed'), '研究完成日志带特殊样式');
 
+state.speciesSpend = { 25: { exp: 321, corpse: 45 } };
 click('open-species', { id: '25' });
 const speciesModal = makeEl('#modal').innerHTML;
 check(speciesModal.includes('研究笔记描述'), '完成研究后物种详情含研究笔记描述');
 check(speciesModal.includes(sp(25).flavor.slice(0, 8)), '完成研究后显示研究笔记描述文本', sp(25).flavor);
 check(!speciesModal.includes('研究行为'), '物种详情不再展示研究行为栏');
 check(speciesModal.includes('研究损耗'), '物种详情展示研究损耗');
+check(speciesModal.includes('研究成本') && speciesModal.includes('366'), '物种详情按“研究成本”展示合计金额');
+check(!speciesModal.includes('分类'), '物种详情不再展示分类');
 check(!speciesModal.includes('已披露'), '物种详情种族值不再显示披露数量');
 check(speciesModal.includes(`>${sp(25).stats.hp}<`), '物种详情显示已披露的种族值');
 click('close');
@@ -704,38 +709,34 @@ check(loadingState.gold < 1800, '加载完成后结算实验');
 UI.setExperimentLoading(false);
 click('close');
 
-// 围栏筛选：超过 5 只才启用，按属性 / 性格过滤
-const filterState = L.newGame(7777);
-const natureA = DEX.natures[0].id;
-const natureB = DEX.natures[1].id;
-for (let i = 0; i < 3; i++) {
-  const m = L.createMon(filterState, 16, 5, { gender: 'm' });
-  m.nature = natureA;
-  filterState.mons.push(m);
-}
-for (let i = 0; i < 3; i++) {
-  const m = L.createMon(filterState, 74, 5, { gender: 'm' });
-  m.nature = natureB;
-  filterState.mons.push(m);
-}
-UI.setState(filterState);
+// 围栏开关：培育相关 / 其它 一次只显示一段；遗体单独成栏
+const sectionState = L.newGame(7777);
+const evoIdle = L.createMon(sectionState, 17, 5, { gender: 'm' }); // 比比鸟：培育栏里波波的进化
+const unrelated = L.createMon(sectionState, 25, 5, { gender: 'm' }); // 皮卡丘：与培育栏无关
+sectionState.mons.push(evoIdle, unrelated);
+UI.setState(sectionState);
 UI.render();
-check(!makeEl('#idle-filters').classList.contains('hidden'), '围栏超过 5 只时显示筛选栏');
-check(makeEl('#idle').innerHTML.includes(sp(16).zh) && makeEl('#idle').innerHTML.includes(sp(74).zh), '筛选前显示全部围栏个体');
-const typeSel = makeEl('#idle-type-filter');
-typeSel.value = 'rock';
-handlers.change({ target: { id: 'idle-type-filter', value: 'rock' } });
-check(makeEl('#idle').innerHTML.includes(sp(74).zh) && !makeEl('#idle').innerHTML.includes(sp(16).zh), '按属性筛选围栏个体');
-click('reset-idle-filters');
-check(makeEl('#idle').innerHTML.includes(sp(16).zh) && makeEl('#idle').innerHTML.includes(sp(74).zh), '重置筛选恢复全部个体');
-const natureSel = makeEl('#idle-nature-filter');
-natureSel.value = natureB;
-handlers.change({ target: { id: 'idle-nature-filter', value: natureB } });
-check(makeEl('#idle').innerHTML.includes(sp(74).zh) && !makeEl('#idle').innerHTML.includes(sp(16).zh), '按性格筛选围栏个体');
-filterState.mons = filterState.mons.slice(0, 7);
+check(indexHtml.includes('idle-tab-related') && indexHtml.includes('idle-tab-others'), '围栏有分段开关');
+let idleHtml = makeEl('#idle').innerHTML;
+check(idleHtml.includes('<div class="idle-sec" data-sec="related">'), '默认展示培育相关段');
+check(idleHtml.includes('<div class="idle-sec hidden" data-sec="others">'), '其它段默认隐藏');
+check(idleHtml.includes(`idle-${evoIdle.uid}`) && idleHtml.includes(`idle-${unrelated.uid}`), '两段个体都在页面里，靠开关切换');
+check(makeEl('#idle-tab-related').textContent.includes('培育相关（1）'), '开关显示培育相关数量', makeEl('#idle-tab-related').textContent);
+check(makeEl('#idle-tab-others').textContent.includes('其它（1）'), '开关显示其它数量', makeEl('#idle-tab-others').textContent);
+
+click('idle-section', { section: 'others' });
+idleHtml = makeEl('#idle').innerHTML;
+check(idleHtml.includes('<div class="idle-sec hidden" data-sec="related">'), '切换后培育相关段隐藏');
+check(idleHtml.includes('<div class="idle-sec" data-sec="others">'), '切换后其它段显示');
+check(makeEl('#idle-tab-others').classList.contains('on'), '切换后按钮高亮');
+
+sectionState.idleCorpses = [{ dexId: 25, no: 9, level: 3, gender: 'f', day: 2, cause: 'bully' }];
 UI.render();
-check(makeEl('#idle-filters').classList.contains('hidden'), '围栏不足 6 只时隐藏筛选栏');
-check(makeEl('#idle').innerHTML.includes(sp(16).zh) && makeEl('#idle').innerHTML.includes(sp(74).zh), '筛选关闭后显示全部个体');
+check(makeEl('#idle').innerHTML.includes('data-sec="corpse"'), '遗体单独成栏');
+click('idle-section', { section: 'related' });
+const corpseBlockHtml = makeEl('#idle').innerHTML;
+check(corpseBlockHtml.includes('idle-corpse-0') && !corpseBlockHtml.includes('<div class="idle-sec hidden" data-sec="corpse">'), '遗体栏与分段开关无关，始终显示');
+check(!indexHtml.includes('idle-filters'), '围栏筛选栏已从页面移除');
 
 // 培育栏状态表达：蛋位满 / 锁定 / 遗体
 const failUi = L.newGame(8888);
@@ -773,6 +774,75 @@ UI.render();
 check(makeEl('#pens').innerHTML.includes('遗体'), '培育栏显示遗体', );
 check(makeEl('#pens').innerHTML.includes('process-pen-corpse'), '培育栏遗体带处理按钮');
 check(makeEl('#pens').innerHTML.includes(`🪙 ${CONFIG.penCorpseProcessCost}`), '遗体处理按钮标价');
+
+// 培育栏详情：放入实验室 / 扔回围栏
+const penLabUi = L.newGame(8890);
+const plA = L.createMon(penLabUi, 16, 10, { gender: 'm' });
+const plB = L.createMon(penLabUi, 21, 10, { gender: 'f' });
+const plC = L.createMon(penLabUi, 25, 5, { gender: 'm' });
+penLabUi.mons.push(plA, plB, plC);
+penLabUi.pens[0] = { a: plA.uid, b: plB.uid, breed: 0.5 };
+UI.setState(penLabUi);
+UI.render();
+click('open-mon', { uid: plA.uid });
+check(makeEl('#modal').innerHTML.includes('扔回围栏'), '培育栏详情按钮为扔回围栏');
+check(makeEl('#modal').innerHTML.includes('放入实验室'), '培育栏详情提供放入实验室');
+check(!makeEl('#modal').innerHTML.includes('调动位置'), '培育栏详情不再提供调动位置');
+click('open-pen-lab', { uid: plA.uid });
+check(makeEl('#modal').innerHTML.includes('实验台'), '打开实验台选择弹窗');
+click('pen-to-lab', { uid: plA.uid, slot: '0' });
+check(L.labContains(penLabUi, plA.uid) && L.penIndex(penLabUi, plA.uid) === -1, 'UI 可从培育栏直接送进实验室');
+// 实验室自己的选择列表仍然排除培育栏里的个体
+click('open-lab-picker', { slot: '1' });
+const labPickerHtml = makeEl('#modal').innerHTML;
+check(labPickerHtml.includes(plC.uid), '实验室选择列表包含围栏个体');
+check(!labPickerHtml.includes(plB.uid), '实验室选择列表排除培育栏个体');
+check(!labPickerHtml.includes(plA.uid), '实验室选择列表排除已在实验室的个体');
+click('close');
+
+// 研究完成 -> 培育栏卡片实时变绿
+const researchUi = L.newGame(8891);
+UI.setState(researchUi);
+researchUi.research[16] = L.researchRequirement(16);
+if (!researchUi.dex.includes(16)) researchUi.dex.push(16);
+UI.render();
+check(makeEl('#pen-0-a').classList.contains('researched'), '研究完成后培育栏卡片实时变绿');
+
+// 日志落盘：写入 state.log，重新挂载后回播，内部过期记录不回播
+UI.pushLog('日志落盘测试', 'info');
+check((researchUi.log || []).some((e) => e.msg === '日志落盘测试'), '日志写入 state.log');
+researchUi.log.push({ day: 1, type: 'expire', msg: '需求过期测试' });
+UI.setState(researchUi);
+check(makeEl('#log').innerHTML.includes('日志落盘测试'), '重新挂载后日志能回播');
+check(!makeEl('#log').innerHTML.includes('需求过期测试'), '内部过期记录不回播');
+
+// 实验日志：同一编号视觉合并
+const journalUi = L.newGame(8892);
+journalUi.expJournal = [
+  { day: 5, no: 7, dexId: 16, level: 12, expId: 'measure', expName: '基础体测', survived: true, result: '甲' },
+  { day: 4, no: 7, dexId: 16, level: 11, expId: 'sample', expName: '组织采样', survived: true, result: '乙' },
+  { day: 3, no: 9, dexId: 16, level: 8, expId: 'battle', expName: '对战测试', survived: false, result: '丙' },
+];
+UI.setState(journalUi);
+UI.render();
+const journalHtml = makeEl('#dex-page').innerHTML;
+check((journalHtml.match(/exp-journal-group/g) || []).length === 2, '同一编号合并成一组、不同编号分开');
+check((journalHtml.match(/exp-journal-head/g) || []).length === 2, '每组只渲染一个编号头');
+check(journalHtml.includes('#0007') && journalHtml.includes('#0009'), '编号头显示个体编号');
+
+// 未满研究的物种：实验死亡仍然写入日志并显示死亡结语
+const deathLogUi = L.newGame(8893);
+const dlMon = L.createMon(deathLogUi, 17, 10, { gender: 'm' });
+deathLogUi.mons.push(dlMon);
+L.assignLab(deathLogUi, 0, dlMon.uid);
+dlMon.tolerance = 1;
+deathLogUi.gold = 1000;
+const dlExp = L.experimentsFor(17)[0];
+L.startExperiment(deathLogUi, dlMon.uid, dlExp.id);
+UI.setState(deathLogUi);
+UI.render();
+check((deathLogUi.expJournal || []).some((e) => e.expId === dlExp.id && !e.survived), '未满研究的死亡写入实验日志');
+check(makeEl('#dex-page').innerHTML.includes('实验结束后对象死亡'), '未满研究的日志显示死亡结语');
 
 console.log(`\n${failures === 0 ? 'UI 测试全部通过 ✓' : `${failures} 项失败 ✗`}`);
 process.exit(failures ? 1 : 0);

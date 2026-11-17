@@ -1030,29 +1030,54 @@ p {
   line-height: 1.45;
 }
 
-.idle-filters {
+/* 围栏开关：培育相关 / 其它 */
+.idle-switch {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: 6px;
   margin-bottom: 8px;
 }
 
-.idle-filters select {
-  flex: 1 1 120px;
-  min-width: 0;
+.idle-switch button {
+  flex: 1 1 0;
   padding: 6px 8px;
+  border-radius: 9px;
   border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  background: rgba(9, 16, 28, 0.9);
-  color: var(--text);
-  font-size: 11px;
+  background: rgba(9, 16, 28, 0.7);
+  color: var(--muted);
+  font-size: 11.5px;
 }
 
-.idle-filters button {
-  flex: none;
-  padding: 6px 10px;
+.idle-switch button.on {
+  color: var(--text);
+  border-color: #3a5683;
+  background: rgba(24, 38, 62, 0.9);
+}
+
+/* 分段容器用 display:contents，卡片仍然是 #idle 网格的直接成员 */
+.idle-sec {
+  display: contents;
+}
+
+.idle-sec.hidden {
+  display: none;
+}
+
+/* 围栏分段标题 */
+.idle-sec-title {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 2px 0 0;
   font-size: 11px;
+  color: #bfd0e8;
+  font-weight: 600;
+}
+
+.idle-sec-title span {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 10px;
 }
 
 .idle-grid {
@@ -1759,9 +1784,40 @@ p {
 
 .exp-journal {
   display: grid;
-  gap: 5px;
+  gap: 8px;
   max-height: 48dvh;
   overflow: auto;
+}
+
+/* 同一个编号的实验记录合并成一组：编号 / 物种 / 等级只出现在组头 */
+.exp-journal-group {
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: rgba(8, 15, 26, 0.5);
+}
+
+.exp-journal-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 2px 2px;
+  font-size: 11px;
+  color: #bfd0e8;
+}
+
+.exp-journal-head .lv {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.exp-journal-head .cnt {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .exp-journal-row {
@@ -1769,10 +1825,10 @@ p {
   grid-template-columns: 30px 1fr;
   align-items: start;
   gap: 3px 7px;
-  padding: 7px 8px;
-  border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  background: rgba(10, 18, 30, 0.42);
+  padding: 5px 6px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
   font-size: 10.5px;
   line-height: 1.5;
 }
@@ -1783,14 +1839,9 @@ p {
   font-variant-numeric: tabular-nums;
 }
 
-.exp-journal-row .who,
 .exp-journal-row .act,
 .exp-journal-row .res {
   grid-column: 2;
-}
-
-.exp-journal-row .who {
-  color: #bfd0e8;
 }
 
 .exp-journal-row .act {
@@ -1803,8 +1854,8 @@ p {
 }
 
 .exp-journal-row.dead {
-  border-color: rgba(255, 107, 122, 0.24);
-  background: rgba(70, 16, 28, 0.2);
+  border-left-color: rgba(255, 107, 122, 0.55);
+  background: rgba(70, 16, 28, 0.18);
 }
 
 .exp-journal-row.dead .res {
@@ -1812,9 +1863,8 @@ p {
 }
 
 .exp-journal-row.completed {
-  border-color: rgba(255, 215, 106, 0.55);
-  background: linear-gradient(180deg, rgba(70, 58, 22, 0.35), rgba(26, 24, 14, 0.4));
-  box-shadow: 0 0 0 1px rgba(255, 215, 106, 0.08) inset;
+  border-left-color: rgba(255, 215, 106, 0.7);
+  background: linear-gradient(180deg, rgba(70, 58, 22, 0.28), rgba(26, 24, 14, 0.32));
 }
 
 .exp-journal-row .complete {
@@ -2104,6 +2154,27 @@ p {
 
 .pick-row .mini {
   width: 100%;
+}
+
+/* 从培育栏送进实验室：实验台选择列表 */
+.slot-list {
+  display: grid;
+  gap: 6px;
+  max-height: 52dvh;
+  overflow: auto;
+}
+
+.slot-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.slot-row span {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 /* 实验列表 */

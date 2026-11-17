@@ -55,8 +55,8 @@ check(deserialize(serialize(noState)).mons.find((m) => m.uid === stillIdle.uid)?
 
 // 基础兼容性
 const [a, b] = state.mons;
-check(!L.compatibility(state, a, a).ok, '不能和自己配种');
-check(L.compatibility(state, a, b).ok, '波波 + 烈雀 可配种（同为飞行组）');
+check(!L.compatibility(a, a).ok, '不能和自己配种');
+check(L.compatibility(a, b).ok, '波波 + 烈雀 可配种（同为飞行组）');
 
 // 蛋组一开始未知
 check(L.eggGroupsDisplay(state, 16) === '？？？', '未确认前蛋组显示为 ？？？', L.eggGroupsDisplay(state, 16));
@@ -84,7 +84,7 @@ const candiesAfterBuy = state.candies;
 L.feed(state, a.uid);
 check(state.candies === candiesAfterBuy - 1, '喂食消耗经验糖果', `(${state.candies})`);
 check(a.level > lv0 || a.exp > exp0, '喂食增加经验');
-check(L.compatibility(state, a, b).ok, '无需亲密度即可配种');
+check(L.compatibility(a, b).ok, '无需亲密度即可配种');
 
 // 模拟：每 0.25 天做一次决策
 let totalEvents = [];
@@ -419,6 +419,8 @@ const nc1 = L.startExperiment(noCdState, noCdMon.uid, noCdHardest.id);
 const nc2 = L.startExperiment(noCdState, noCdMon.uid, noCdHardest.id);
 check(nc1.ok && nc2.ok, '研究完成后连续实验不再被冷却拦住', `(${nc2.msg})`);
 check(L.experimentCooldownFor(noCdState, noCdMon, noCdHardest.id) === 0, '研究完成后不记录冷却');
+// 研究已满的物种：实验照做，但不再往研究笔记里写日志
+check((noCdState.expJournal || []).length === 0, '研究满后实验不再写入日志', `(${(noCdState.expJournal || []).length})`);
 
 // ---------- 蛋贩子：每两周换货 / 换货费递增并随时间回落 ----------
 check(EGG_SOURCES.length === 300 && new Set(EGG_SOURCES).size === 300, '来源描述共 300 条且不重复');
@@ -627,8 +629,8 @@ const noLimitMale = L.createMon(noLimitState, 16, CONFIG.maxLevel, { gender: 'm'
 const noLimitFemale = L.createMon(noLimitState, 16, CONFIG.maxLevel, { gender: 'f' });
 check(!('bredEggs' in noLimitMale), '个体不再记录雄性繁育数');
 check(L.sterilityLabel(noLimitMale) === '', '正常雄性没有性冷淡标记');
-check(L.compatibility(noLimitState, noLimitMale, noLimitFemale).ok === true, '正常雄性可继续配种');
-check(L.compatibility(noLimitState, noLimitMale, noLimitFemale).cold === undefined, '兼容性判定不再返回性冷淡状态');
+check(L.compatibility(noLimitMale, noLimitFemale).ok === true, '正常雄性可继续配种');
+check(L.compatibility(noLimitMale, noLimitFemale).cold === undefined, '兼容性判定不再返回性冷淡状态');
 
 // 条件不符：较弱的一只被放生，另一只掉耐受
 const br3 = L.newGame(4102);
@@ -748,7 +750,7 @@ const nidorina = L.createMon(nido, 30, 16, { gender: 'f' });
 const nidoranM = L.createMon(nido, 32, 16, { gender: 'm' });
 nido.mons = [nidorina, nidoranM];
 check(sp(30).eggGroups.includes('monster') && sp(31).eggGroups.includes('ground'), '尼多娜/尼多后蛋组与雄性线一致', JSON.stringify(sp(30).eggGroups));
-check(L.compatibility(nido, nidorina, nidoranM).ok, '尼多娜可以与尼多朗繁育');
+check(L.compatibility(nidorina, nidoranM).ok, '尼多娜可以与尼多朗繁育');
 nido.pens = [{ a: nidoranM.uid, b: nidorina.uid, breed: 0 }];
 nido.eggs = [];
 L.tick(nido, 3);
@@ -863,6 +865,111 @@ exhaustCorpse.eggs = [];
 const exEv = L.tick(exhaustCorpse, 3);
 check(exEv.some((e) => e.exhausted && Number.isInteger(e.pen)), '力竭事件带栏位索引');
 check(!!exhaustCorpse.pens[0].bCorpse, '力竭的母亲留下遗体');
+
+// ---------- 血统记录（只写不读） ----------
+const kinData = L.newGame(4300);
+const kDad = L.createMon(kinData, 16, CONFIG.maxLevel, { gender: 'm' });
+const kMom = L.createMon(kinData, 21, CONFIG.maxLevel, { gender: 'f' });
+kinData.mons = [kDad, kMom];
+kinData.pens = [{ a: kDad.uid, b: kMom.uid, breed: 0 }];
+kinData.eggs = [];
+check(kDad.ancestors.length === 0 && kDad.gen === 0, '初始个体没有血统记录');
+// 分步推进：一次 tick 跨过 2.5 天会让新蛋当帧孵出
+for (let i = 0; i < 40 && !kinData.eggs.length; i++) L.tick(kinData, 0.25);
+const kinEgg1 = kinData.eggs[0];
+check(!!kinEgg1, '血统用例：正常产蛋');
+check(kinEgg1?.ancestors?.includes(kDad.uid) && kinEgg1?.ancestors?.includes(kMom.uid), '蛋记录双亲 uid');
+check(kinEgg1?.gen === 1, '蛋的世代为 1', `(${kinEgg1?.gen})`);
+kinEgg1.daysLeft = 0.01;
+L.tick(kinData, 0.1);
+const kinChild = L.monByUid(kinData, kinEgg1.uid);
+check(!!kinChild && kinChild.gen === 1 && kinChild.ancestors.includes(kDad.uid), '孵出的个体继承血统');
+const kMom2 = L.createMon(kinData, 21, CONFIG.maxLevel, { gender: kinChild.gender === 'f' ? 'm' : 'f' });
+kinData.mons.push(kMom2);
+kinData.pens = [{ a: kinChild.uid, b: kMom2.uid, breed: 0 }];
+for (let i = 0; i < 40 && !kinData.eggs.length; i++) L.tick(kinData, 0.25);
+const kinEgg2 = kinData.eggs[0];
+check(kinEgg2?.gen === 2, '第二代蛋的世代为 2', `(${kinEgg2?.gen})`);
+check(kinEgg2?.ancestors?.includes(kDad.uid), '祖先并集保留更早的辈分');
+
+// ---------- 培育栏 → 实验室 ----------
+const mvState = L.newGame(4301);
+const mvA = L.createMon(mvState, 16, CONFIG.maxLevel, { gender: 'm' });
+const mvB = L.createMon(mvState, 21, CONFIG.maxLevel, { gender: 'f' });
+mvState.mons = [mvA, mvB];
+mvState.pens = [
+  { a: mvA.uid, b: mvB.uid, breed: 1.2 },
+  { a: null, b: null, breed: 0 },
+];
+const penToLabBlocked = L.assignLab(mvState, 0, mvA.uid);
+check(penToLabBlocked.ok === false, 'assignLab 不接受培育栏里的个体', penToLabBlocked.msg);
+const penToLab = L.sendPenToLab(mvState, mvA.uid, 0);
+check(penToLab.ok, '培育栏详情可以把个体送进实验室', penToLab.msg);
+check(L.penIndex(mvState, mvA.uid) === -1, '送进实验室后离开培育栏');
+check(mvState.pens[0].a === null && mvState.pens[0].breed === 0, '原栏位清空且繁育条归零');
+check(L.labContains(mvState, mvA.uid), '个体已经在实验室里');
+check(L.sendPenToLab(mvState, mvB.uid, 0).ok === false, '实验台被占用时不能把栏位个体送进去');
+check(L.penIndex(mvState, mvB.uid) !== -1, '送入失败时个体仍留在培育栏');
+mvState.lab[0].corpse = { dexId: 16, no: null, level: 1, gender: 'm', day: 1, cause: 'overload' };
+mvState.lab[0].uid = null;
+check(L.sendPenToLab(mvState, mvB.uid, 0).ok === false, '有遗体的实验台不能送入');
+check(L.penIndex(mvState, mvB.uid) !== -1, '遗体占位时个体仍留在培育栏');
+
+// ---------- 按物种累计花费 ----------
+const spendState = L.newGame(4306);
+const spendMon = L.createMon(spendState, 16, 20, { gender: 'm' });
+spendState.mons.push(spendMon);
+L.assignLab(spendState, 0, spendMon.uid);
+spendMon.tolerance = 200; // 夹具：只关心花费累加
+const beforeSpend = (spendState.speciesSpend[16] || { exp: 0, corpse: 0 }).exp;
+L.startExperiment(spendState, spendMon.uid, 'measure');
+const measureCost = L.experimentsFor(16).find((e) => e.id === 'measure').cost;
+check(spendState.speciesSpend[16].exp === beforeSpend + measureCost, '实验花费按物种累计', `(${spendState.speciesSpend[16].exp})`);
+const procCost = L.labProcessCost(spendState, 0);
+spendState.gold = 9999;
+L.processLabSlot(spendState, 0);
+check(spendState.speciesSpend[16].corpse === procCost, '处理活体花费按物种累计', `(${spendState.speciesSpend[16].corpse})`);
+const idleCorpseState = L.newGame(4307);
+idleCorpseState.gold = 999;
+idleCorpseState.idleCorpses = [{ dexId: 21, no: 1, level: 3, gender: 'f', day: 2, cause: 'bully' }];
+L.processIdleCorpse(idleCorpseState, 0);
+check(idleCorpseState.speciesSpend[21].corpse === CONFIG.idleCorpseProcessCost, '围栏遗体处理花费按物种累计');
+
+// ---------- 设施表：喂食器已移除 ----------
+check(!('feeder' in UPGRADE_INFO), '自动喂食器已从设施表移除');
+check(!('feeder' in L.newGame(4302).upgrades), '新档不再有喂食器字段');
+check(!('feederTimer' in L.newGame(4303)), '新档不再有喂食器计时器');
+
+// ---------- 蛋位守卫 ----------
+const guardState = L.newGame(4304);
+guardState.eggs = Array.from({ length: L.eggSlots(guardState) }, (_, i) => ({ uid: `g${i}`, dexId: 16, daysLeft: 5, total: 5 }));
+const beforeEggs = guardState.eggs.length;
+const fullBuy = L.buyEggOffer(guardState, 0);
+check(fullBuy.ok === false && fullBuy.msg.includes('孵化器已满'), '蛋位满时买蛋被拒绝', fullBuy.msg);
+check(guardState.eggs.length === beforeEggs, '被拒绝时不会多出蛋');
+
+// ---------- 争斗 tie-break 用数值编号 ----------
+const tieState = L.newGame(4305);
+const tieA = L.createMon(tieState, 16, 5, {});
+const tieB = L.createMon(tieState, 16, 5, {});
+tieA.uid = 'u10';
+tieB.uid = 'u9';
+check(L.weakerOf(tieA, tieB)[0].uid === 'u9', '同等级同种族值时按编号数值比较（u9 弱于 u10）');
+
+// ---------- 围栏分组：培育相关 / 其它 ----------
+const secState = L.newGame(4310);
+const vaporeon = L.createMon(secState, 134, 10, { gender: 'm' }); // 水伊布（在培育栏）
+const flareon = L.createMon(secState, 136, 10, { gender: 'm' }); // 火伊布（同一进化链）
+const pidgeyIdle = L.createMon(secState, 16, 10, { gender: 'm' }); // 波波（无关物种）
+secState.mons = [vaporeon, flareon, pidgeyIdle];
+secState.pens = [{ a: vaporeon.uid, b: null, breed: 0 }];
+const evoIds = L.evolutionChainIds(134);
+check([133, 134, 135, 136].every((id) => evoIds.includes(id)), '进化链包含分支进化的全部物种', evoIds.join(','));
+const sections = L.idleSections(secState);
+check(sections.related.some((m) => m.uid === flareon.uid), '同链其它分支归入培育相关');
+check(sections.others.some((m) => m.uid === pidgeyIdle.uid), '无关物种归入其它');
+check(!sections.related.some((m) => m.uid === pidgeyIdle.uid), '无关物种不出现在培育相关');
+check(!sections.others.some((m) => m.uid === vaporeon.uid), '培育栏里的个体不出现在围栏分组');
 
 // ---------- 围栏霸凌 ----------
 const idleFight = L.newGame(8200);
@@ -993,7 +1100,7 @@ check(L.currentRank(rankState).name === '助理研究员', '当前职级名称�
 // 价格/职级表以“当前等级”为下标，所以长度必须恰好等于 max（0 级…max-1 级各一项）。
 // 长度偏大 = 尾部有永远取不到的无效条目；偏小 = 末尾取到 undefined，升级变免费。
 // 起始等级以下的条目是占位（pens 从 3 级起、lab 从 2 级起），不参与校验。
-const startLevel = { pens: 3, lab: 2, incubator: 0, feeder: 0, advertising: 0, training: 0 };
+const startLevel = { pens: 3, lab: 2, incubator: 0, advertising: 0, training: 0 };
 for (const [key, info] of Object.entries(UPGRADE_INFO)) {
   check(info.costs.length === info.max, `${info.name}价格表长度 = 等级上限`, `(${info.costs.length} vs ${info.max})`);
   check(info.rankReq.length === info.max, `${info.name}职级表长度 = 等级上限`, `(${info.rankReq.length} vs ${info.max})`);
@@ -1239,7 +1346,7 @@ specialState.mons.push(shinyMon, normalMale);
 check(shinyMon.shiny === true && shinyMon.sterile === true, '闪光与不孕可以共存');
 check(L.sterilityLabel(shinyMon) === '不孕', '雌性标注不孕');
 check(L.sterilityLabel(normalMale) === '', '正常雄性没有不育标记');
-const sterileComp = L.compatibility(specialState, shinyMon, normalMale);
+const sterileComp = L.compatibility(shinyMon, normalMale);
 check(!sterileComp.ok && sterileComp.sterile === true, '不孕个体无法配种');
 specialState.pens = [{ a: shinyMon.uid, b: normalMale.uid, breed: 0 }];
 specialState.eggs = [];
