@@ -1657,6 +1657,22 @@ p {
   gap: 10px;
 }
 
+.dex-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: rgba(10, 18, 30, 0.55);
+}
+
+@media (max-width: 420px) {
+  .dex-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
 .dex-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
@@ -1839,27 +1855,14 @@ p {
   font-variant-numeric: tabular-nums;
 }
 
-.exp-journal-row .act,
-.exp-journal-row .res {
-  grid-column: 2;
-}
-
 .exp-journal-row .act {
+  grid-column: 2;
   color: #f5c451;
-}
-
-.exp-journal-row .res {
-  color: var(--muted);
-  min-width: 0;
 }
 
 .exp-journal-row.dead {
   border-left-color: rgba(255, 107, 122, 0.55);
   background: rgba(70, 16, 28, 0.18);
-}
-
-.exp-journal-row.dead .res {
-  color: #ffb3ba;
 }
 
 .exp-journal-row.completed {
@@ -2136,24 +2139,21 @@ p {
 }
 
 .pick.blocked {
-  opacity: 0.48;
-  border-color: rgba(255, 107, 122, 0.2);
+  position: relative;
+  opacity: 1;
+  border-color: rgba(255, 107, 122, 0.55);
+  background: rgba(12, 21, 37, 0.8);
   cursor: not-allowed;
 }
 
-.pick.blocked .ps {
-  color: #ffb3ba;
-}
-
-/* 被锁定的物种：卡片下面挂一个免费的“解除记忆” */
-.pick-row {
-  display: grid;
-  gap: 4px;
-  align-content: start;
-}
-
-.pick-row .mini {
-  width: 100%;
+.pick.blocked::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: rgba(5, 10, 18, 0.32);
+  pointer-events: none;
 }
 
 /* 从培育栏送进实验室：实验台选择列表 */
@@ -2305,13 +2305,6 @@ p {
   color: var(--muted);
   font-size: 10.5px;
   margin-bottom: 10px;
-}
-
-.exp-result-text {
-  margin: 0 0 12px;
-  color: #e6eefc;
-  font-size: 14px;
-  line-height: 1.65;
 }
 
 .exp-result-death {

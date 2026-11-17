@@ -48,6 +48,9 @@ for (let id = 1; id <= 151; id++) {
     if (!e.id.startsWith(`sp${id}-`)) errors.push(`#${id} id 前缀错误：${e.id}`);
     if (len(e.name || '') < 4 || len(e.name || '') > 8) errors.push(`#${id} ${e.id} 名称长度 ${len(e.name || '')}`);
     if (len(e.desc || '') < 10 || len(e.desc || '') > 40) errors.push(`#${id} ${e.id} 描述长度 ${len(e.desc || '')}`);
+    if (/(整个过程中|实验过程中|实验结束后|结束时|被强行按住|被反复折腾|它伤重)/.test(e.desc || '')) {
+      errors.push(`#${id} ${e.id} 描述混入实验过程/结果信息`);
+    }
     if (names.has(e.name)) warnings.push(`重名：${e.name}（#${names.get(e.name)} / #${id}）`);
     else names.set(e.name, id);
   }

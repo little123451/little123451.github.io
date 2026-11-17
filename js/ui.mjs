@@ -5,7 +5,6 @@ import {
   DEX, sp, art, sprite, remoteSprite, typeZh, typeColor, calcStats, natureById, STAT_ZH,
   ITEM_ZH, STONE_ITEMS, itemIcon,
 } from './data.mjs';
-import { ensureSpeciesResults, speciesResultsLoaded } from './results.mjs';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -37,7 +36,11 @@ const monNo = (m) => (m?.no ? `#${String(m.no).padStart(4, '0')}` : '');
 const monNoTag = (m) => (monNo(m) ? `<span class="mon-no">${monNo(m)}</span>` : '');
 const researchedCls = (m) => (m && L.isResearched(S, m.dexId) ? ' researched' : '');
 const pct = (v, max) => (max <= 0 ? 0 : Math.max(0, Math.min(100, (v / max) * 100)));
-const imgFallback = (id) => ` onerror="this.onerror=null;this.src='${remoteSprite(Number(id))}'"`;
+const imgFallback = (id, shiny = false) => {
+  // 闪光图加载失败时退回本地普通图；普通图失败时退回远程普通图。
+  const fallback = shiny ? `data/sprites/${Number(id)}.png` : remoteSprite(Number(id));
+  return ` onerror="this.onerror=null;this.src='${fallback}'"`;
+};
 const setText = (node, text) => {
   if (node && node.textContent !== text) node.textContent = text;
 };
@@ -286,10 +289,6 @@ function handleAction(act, d) {
     case 'pen-to-lab': {
       const r = L.sendPenToLab(S, d.uid, Number(d.slot));
       toast(r.msg, r.ok ? 'good' : 'bad');
-      if (r.ok) {
-        const mon = L.monByUid(S, d.uid);
-        if (mon) ensureSpeciesResults(mon.dexId).catch(() => {});
-      }
       closeModal();
       render();
       break;
@@ -311,13 +310,6 @@ function handleAction(act, d) {
     case 'process-pen-corpse': {
       const r = L.processPenCorpse(S, Number(d.pen), d.slot);
       toast(r.msg, r.ok ? 'good' : 'bad');
-      render();
-      break;
-    }
-    case 'forget-failed-pair': {
-      const ok = L.forgetFailedPair(S, Number(d.a), Number(d.b));
-      toast(ok ? '那次失败已经被忘了' : '没有可解除的记录', ok ? 'good' : 'bad');
-      if (ok && d.pen != null) openModal('picker', { pen: Number(d.pen), slot: d.slot });
       render();
       break;
     }
@@ -356,11 +348,7 @@ function handleAction(act, d) {
       // 不再二次确认：选中即送入（选择弹窗里已写明不可取出）
       const r = L.assignLab(S, Number(d.slot), d.uid);
       toast(r.msg, r.ok ? 'good' : 'bad');
-      if (r.ok) {
-        const mon = L.monByUid(S, d.uid);
-        if (mon) ensureSpeciesResults(mon.dexId).catch(() => {});
-        closeModal();
-      }
+      if (r.ok) closeModal();
       render();
       break;
     }
@@ -490,43 +478,48 @@ function renderTop() {
 }
 
 // ---------- 顶部美术：每页的角色/内容缩影 ----------
-function uniqueSpecies(mons) {
+function uniqueHeroMons(mons) {
   const out = [];
-  for (const m of mons) if (m && !out.includes(m.dexId)) out.push(m.dexId);
+  const seen = new Set();
+  for (const m of mons) {
+    if (!m || seen.has(m.dexId)) continue;
+    seen.add(m.dexId);
+    out.push(m);
+  }
   return out;
 }
 
-function heroArtHtml(ids, emptyEmoji) {
-  if (!ids.length) return `<span class="hero-empty">${emptyEmoji}</span>`;
-  return ids
+function heroArtHtml(mons, emptyEmoji) {
+  if (!mons.length) return `<span class="hero-empty">${emptyEmoji}</span>`;
+  return mons
     .slice(0, 4)
-    .map((id) => `<img src="${sprite(id)}"${imgFallback(id)} alt="" />`)
+    .map((m) => `<img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)} alt="" />`)
     .join('');
 }
 
 function ensureHeroes() {
-  const penIds = uniqueSpecies(L.penMons(S));
-  const penSig = penIds.join(',');
+  const penMons = uniqueHeroMons(L.penMons(S));
+  const penSig = penMons.map((m) => `${m.dexId}:${m.shiny ? 1 : 0}`).join(',');
   if (penSig !== sig.heroPens) {
     sig.heroPens = penSig;
     const host = el('hero-art-pens');
-    if (host) host.innerHTML = heroArtHtml(penIds, '🥚');
+    if (host) host.innerHTML = heroArtHtml(penMons, '🥚');
   }
 
-  const labIds = uniqueSpecies(S.lab.map((slot) => L.monByUid(S, slot.uid)).filter(Boolean));
-  const labSig = labIds.join(',');
+  const labMons = uniqueHeroMons(S.lab.map((slot) => L.monByUid(S, slot.uid)).filter(Boolean));
+  const labSig = labMons.map((m) => `${m.dexId}:${m.shiny ? 1 : 0}`).join(',');
   if (labSig !== sig.heroLab) {
     sig.heroLab = labSig;
     const host = el('hero-art-lab');
-    if (host) host.innerHTML = heroArtHtml(labIds, '🧪');
+    if (host) host.innerHTML = heroArtHtml(labMons, '🧪');
   }
 
-  const idleIds = uniqueSpecies(L.idleMons(S));
-  const idleSig = idleIds.slice(0, 4).join(',') + `:${idleIds.length}`;
+  const idleMons = uniqueHeroMons(L.idleMons(S));
+  const idleSig = idleMons.slice(0, 4).map((m) => `${m.dexId}:${m.shiny ? 1 : 0}`).join(',') + `:${idleMons.length}`;
   if (idleSig !== sig.heroIdle) {
     sig.heroIdle = idleSig;
     const host = el('hero-art-idle');
-    if (host) host.innerHTML = heroArtHtml(idleIds, '🏕');
+    if (host) host.innerHTML = heroArtHtml(idleMons, '🏕');
   }
 }
 
@@ -619,7 +612,7 @@ function monSlotHtml(mon, pen, slot) {
   const s = sp(mon.dexId);
   return `<div class="slot filled ${mon.shiny ? 'shiny' : ''}${researchedCls(mon)}" id="pen-${pen}-${slot}" data-act="open-mon" data-uid="${mon.uid}" title="查看详情">
     ${monNoTag(mon)}
-    <img id="pen-${pen}-${slot}-img" src="${sprite(mon.dexId)}"${imgFallback(mon.dexId)}${spriteFilter(mon)} alt="${s.zh}" />
+    <img id="pen-${pen}-${slot}-img" src="${sprite(mon.dexId, mon.shiny)}"${imgFallback(mon.dexId, mon.shiny)}${spriteFilter(mon)} alt="${s.zh}" />
     <div class="nm">${s.zh}<span class="g">${L.genderZh(mon.gender)}</span>${mon.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
     <div class="lv" id="pen-${pen}-${slot}-lv">Lv.${mon.level}</div>
     <div class="egg-grp">${L.eggGroupsDisplay(S, mon.dexId)}</div>
@@ -647,23 +640,17 @@ function patchPens() {
     const warn = el(`pen-${i}-warn`);
     if (warn) {
       let text = '';
-      let action = null;
       if (st.kind === 'waiting-egg') {
         text = '孵化器已满，繁育暂停';
       } else if (st.kind === 'locked') {
         text = st.reason;
-        action = { a: a.dexId, b: b.dexId };
       } else if (st.kind === 'sterile' || st.kind === 'quiet') {
         text = st.reason;
       }
-      const key = `${st.kind}|${text}|${action ? `${action.a}-${action.b}` : ''}`;
+      const key = `${st.kind}|${text}`;
       if (warn.dataset.key !== key) {
         warn.dataset.key = key;
-        if (action) {
-          warn.innerHTML = `${text} <button class="mini" data-act="forget-failed-pair" data-a="${action.a}" data-b="${action.b}">解除记忆</button>`;
-        } else {
-          warn.textContent = text;
-        }
+        warn.textContent = text;
       }
       warn.classList.toggle('hidden', !text);
     }
@@ -805,7 +792,7 @@ function ensureLab() {
       return `<div class="lab-card ${mon.shiny ? 'shiny' : ''}${researchedCls(mon)}" id="lab-${i}">
         ${monNoTag(mon)}
         <div class="lab-head">
-          <img id="lab-${i}-img" src="${sprite(mon.dexId)}"${imgFallback(mon.dexId)}${spriteFilter(mon)} alt="${spc.zh}" />
+          <img id="lab-${i}-img" src="${sprite(mon.dexId, mon.shiny)}"${imgFallback(mon.dexId, mon.shiny)}${spriteFilter(mon)} alt="${spc.zh}" />
           <div>
             <div class="nm">${spc.zh}${mon.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
             <div class="lv">Lv.${mon.level} · ${L.eggGroupsDisplay(S, mon.dexId)}${L.sterilityLabel(mon) ? ` · ${L.sterilityLabel(mon)}` : ''}</div>
@@ -856,44 +843,16 @@ function experimentDuration(exp) {
   return 900;
 }
 
-function resultsLoadingModalHtml() {
-  return `<div class="modal-card">
-    <div class="modal-head"><h3>正在调取实验记录……</h3><button class="ghost close" data-act="close">关闭</button></div>
-    <div class="exp-loading">
-      <div class="exp-loading-icon">🧪</div>
-      <p>第一次研究该物种时，需要先调取它的实验结果。</p>
-    </div>
-  </div>`;
-}
-
 function openExperimentFor(uid) {
   const mon = L.monByUid(S, uid);
   if (!mon) return toast('找不到宝可梦', 'bad');
-  if (speciesResultsLoaded(mon.dexId)) {
-    openModal('labexp', { uid });
-    return;
-  }
-  openModal('resultsload', { uid });
-  ensureSpeciesResults(mon.dexId)
-    .then(() => {
-      if (modal?.type === 'resultsload' && modal.uid === uid) openModal('labexp', { uid });
-    })
-    .catch((err) => {
-      if (modal?.type === 'resultsload') {
-        toast(err.message || '实验记录加载失败', 'bad');
-        closeModal();
-      }
-    });
+  openModal('labexp', { uid });
 }
 
 function beginExperiment(uid, expId) {
   if (pendingExp) return;
   const mon = L.monByUid(S, uid);
   if (!mon) return toast('找不到宝可梦', 'bad');
-  if (!speciesResultsLoaded(mon.dexId)) {
-    openExperimentFor(uid);
-    return;
-  }
   const exp = L.experimentsFor(mon.dexId).find((e) => e.id === expId);
   if (!exp) return toast('没有这个实验', 'bad');
   const snapshot = { no: mon.no, dexId: mon.dexId, level: mon.level, name: sp(mon.dexId).zh };
@@ -950,18 +909,20 @@ function completeExperiment(uid, expId, snapshot, exp) {
   const won = r.events?.some((e) => e.type === 'win');
   if (!r.released) playLabHit(uid, r.intensity);
   render();
-  if (r.result && !won) {
-    openModal('expresult', {
-      uid,
-      expId,
-      expName: exp.name,
-      mon: snapshot,
-      result: r.result,
-      corpseSlot: r.corpseSlot,
-    });
-  } else if (!won) {
+  if (won) return;
+  if (!r.released) {
     closeModal();
+    toast(r.msg, 'good');
+    return;
   }
+  openModal('expresult', {
+    uid,
+    expId,
+    expName: exp.name,
+    mon: snapshot,
+    result: r.result,
+    corpseSlot: r.corpseSlot,
+  });
 }
 
 function playLabHit(uid, intensity = 0.5) {
@@ -994,7 +955,7 @@ function idleMonCard(m, bullyUids) {
   const fighting = bullyUids.has(m.uid);
   return `<div class="idle-mon${fighting ? ' fighting' : ''}${m.shiny ? ' shiny' : ''}${researchedCls(m)}" id="idle-${m.uid}" data-act="open-mon" data-uid="${m.uid}" title="查看详情">
     ${monNoTag(m)}
-    <img id="idle-${m.uid}-img" src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="${spc.zh}" />
+    <img id="idle-${m.uid}-img" src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m)} alt="${spc.zh}" />
     <div class="n">${spc.zh}<span class="g">${L.genderZh(m.gender)}</span>${m.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
     <div class="lv" id="idle-${m.uid}-lv">Lv.${m.level}</div>
     <div class="egg-grp">${L.eggGroupsDisplay(S, m.dexId)}</div>
@@ -1351,7 +1312,6 @@ function renderModal() {
   else if (modal.type === 'penlab') root.innerHTML = penLabPickerModalHtml(modal.uid);
   else if (modal.type === 'deliver') root.innerHTML = deliverModalHtml(modal.orderId);
   else if (modal.type === 'labexp') root.innerHTML = labExpModalHtml(modal.uid);
-  else if (modal.type === 'resultsload') root.innerHTML = resultsLoadingModalHtml();
   else if (modal.type === 'expresult') root.innerHTML = expResultModalHtml();
   else if (modal.type === 'labpicker') root.innerHTML = labPickerModalHtml(modal.slot);
   else if (modal.type === 'ranks') root.innerHTML = ranksModalHtml();
@@ -1432,7 +1392,7 @@ function monModalHtml(uid) {
     s.zh,
     `
     <div class="detail">
-      <div class="detail-art"><img src="${art(mon.dexId)}"${imgFallback(mon.dexId)}${spriteFilter(mon)} alt="${s.zh}" /></div>
+      <div class="detail-art"><img src="${art(mon.dexId, mon.shiny)}"${imgFallback(mon.dexId, mon.shiny)}${spriteFilter(mon)} alt="${s.zh}" /></div>
       <div class="detail-meta">
         <div class="kv"><span class="k">编号</span><span class="v" style="font-variant-numeric:tabular-nums">${monNo(mon) || '未编号'}</span></div>
         <div class="kv"><span class="k">属性</span><span class="v">${typeBadges(s.types)}</span></div>
@@ -1505,7 +1465,7 @@ function speciesModalHtml(dexId) {
 }
 
 // 实验日志：同一个体（编号）的多条记录在视觉上合并成一组，
-// 组头只出现一次编号/物种/等级，组内按时间从新到旧列实验。
+// 组头只出现一次编号/物种/等级；组内同一天的连续实验只显示一次日期。
 function expJournalRowsHtml(dexId = null, limit = 50) {
   const entries = (S.expJournal || []).filter((e) => dexId == null || e.dexId === dexId).slice(0, limit);
   if (!entries.length) return '<div class="empty-tip">还没有实验日志。</div>';
@@ -1523,14 +1483,17 @@ function expJournalRowsHtml(dexId = null, limit = 50) {
     g.rows.push(e);
   }
 
-  const rowHtml = (e) => {
+  const rowHtml = (e, showDate) => {
     const name = sp(e.dexId)?.zh || e.dexId;
     const exp = L.experimentsFor(e.dexId).find((x) => x.id === e.expId);
-    const act = exp?.desc ? `「${esc(exp.desc)}」` : `「${esc(e.expName)}」`;
+    const act = e.expId === 'process' || e.cause === 'processed'
+      ? '实验对象被「处理」了'
+      : exp?.desc
+        ? esc(exp.desc)
+        : esc(e.expName);
     return `<div class="exp-journal-row ${e.survived ? 'alive' : 'dead'}${e.completed ? ' completed' : ''}">
-      <span class="d">D${e.day}</span>
+      <span class="d">${showDate ? `D${e.day}` : ''}</span>
       <span class="act">${act}</span>
-      <span class="res">：${esc(e.result)}</span>
       ${!e.survived && !['process', 'lab-death', 'bully-death'].includes(e.expId) ? '<span class="exp-journal-death">实验结束后对象死亡</span>' : ''}
       ${e.completed ? `<span class="complete">对${name}的研究完成了</span>` : ''}
     </div>`;
@@ -1547,7 +1510,9 @@ function expJournalRowsHtml(dexId = null, limit = 50) {
           <span class="lv">Lv.${g.level}</span>
           <span class="cnt">${g.rows.length} 次</span>
         </div>
-        ${g.rows.map(rowHtml).join('')}
+        ${g.rows
+          .map((e, i) => rowHtml(e, i === 0 || g.rows[i - 1].day !== e.day))
+          .join('')}
       </div>`;
     })
     .join('');
@@ -1562,18 +1527,13 @@ function pickerModalHtml(penIdx, slot) {
     .map((m) => {
       const s = sp(m.dexId);
       const isBlocked = !!other && m.dexId !== other.dexId && blocked.has(m.dexId);
-      const reason = isBlocked ? `曾与${sp(other.dexId).zh}配对失败，不可用` : null;
-      const card = `<button class="pick${isBlocked ? ' blocked' : ''}${researchedCls(m)}" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}" ${isBlocked ? 'disabled' : ''}${reason ? ` title="${reason}"` : ''}>
+      const card = `<button class="pick${isBlocked ? ' blocked' : ''}${researchedCls(m)}" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}" ${isBlocked ? 'disabled' : ''}>
         ${monNoTag(m)}
-        <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="" />
+        <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m)} alt="" />
         <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}</span>
-        <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)} · ${reason || '空闲'}${L.sterilityLabel(m) ? ` · ${L.sterilityLabel(m)}` : ''}</span>
+        <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)}${L.sterilityLabel(m) ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
-      if (!isBlocked) return card;
-      // 失败记忆是免费的：知道得更多了就该有一次重试的机会
-      return `<div class="pick-row">${card}
-        <button class="mini" data-act="forget-failed-pair" data-a="${other.dexId}" data-b="${m.dexId}" data-pen="${penIdx}" data-slot="${slot}">解除记忆</button>
-      </div>`;
+      return card;
     })
     .join('');
   return modalShell(
@@ -1616,7 +1576,7 @@ function deliverModalHtml(orderId) {
       const s = sp(m.dexId);
       return `<button class="pick${researchedCls(m)}" data-act="deliver" data-order="${order.id}" data-uid="${m.uid}">
         ${monNoTag(m)}
-        <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="" />
+        <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m)} alt="" />
         <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}</span>
         <span class="ps">Lv.${m.level} · ${typeZh(s.types[0])} · ${L.eggGroupsDisplay(S, m.dexId)}${L.sterilityLabel(m) ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
@@ -1681,16 +1641,14 @@ function labExpModalHtml(uid) {
 }
 
 function expResultModalHtml() {
-  const r = modal.result || { survived: true, text: '实验记录已归档。' };
+  const survived = modal.result?.survived !== false;
   const mon = modal.mon || {};
-  const survived = r.survived !== false;
   const slot = modal.corpseSlot;
   const corpseCost = !survived && Number.isInteger(slot) ? L.labProcessCost(S, slot) : 0;
   return modalShell(
     '实验结束',
     `<div class="exp-result ${survived ? 'alive' : 'dead'}">
       <div class="exp-result-meta">#${String(mon.no ?? '—').padStart(4, '0')} ${esc(mon.name || '实验对象')} Lv.${mon.level ?? '—'} · ${esc(modal.expName || '实验')}</div>
-      <p class="exp-result-text">${esc(r.text)}</p>
       ${!survived ? '<div class="exp-result-death">实验结束后对象死亡。</div>' : ''}
       ${!survived && Number.isInteger(slot) ? `<div class="exp-result-note">遗体仍占用实验台，处理后才能放入新的实验对象。</div>` : ''}
       ${
@@ -1732,7 +1690,7 @@ function labPickerModalHtml(slot) {
       const s = sp(m.dexId);
       return `<button class="pick${researchedCls(m)}" data-act="assign-lab" data-slot="${slot}" data-uid="${m.uid}">
         ${monNoTag(m)}
-        <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="" />
+        <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m)} alt="" />
         <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}</span>
         <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)}${L.sterilityLabel(m) ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
@@ -1774,33 +1732,6 @@ function dexCellsHtml() {
     .join('');
 }
 
-// 已完成的条目按完成时间列出，只保留完成日期与损耗
-function dexRecordsHtml() {
-  const doneIds = [...S.dex].sort((a, b) => {
-    const ra = S.dexRecords?.[a];
-    const rb = S.dexRecords?.[b];
-    if (ra && rb) return (ra.day || 0) - (rb.day || 0);
-    if (ra) return -1;
-    if (rb) return 1;
-    return a - b;
-  });
-  return (
-    doneIds
-      .map((id) => {
-        const s = sp(id);
-        const rec = S.dexRecords?.[id] || null;
-        const lostText = rec && rec.lost != null ? `损耗 ${rec.lost} 只` : '';
-        return `<div class="dex-record">
-          <img src="${sprite(id)}"${imgFallback(id)} alt="" />
-          <b>${s?.zh || id}</b>
-          <span class="d">D${rec?.day ?? '-'}</span>
-          <span class="beh">${lostText}</span>
-        </div>`;
-      })
-      .join('') || '<div class="empty-tip">还没有完成的研究笔记条目。</div>'
-  );
-}
-
 function dexPageSignature() {
   const research = Object.keys(S.research || {})
     .map((k) => `${k}=${S.research[k]}`)
@@ -1811,10 +1742,8 @@ function dexPageSignature() {
   const recs = Object.keys(S.dexRecords || {})
     .map((k) => `${k}:${S.dexRecords[k]?.day ?? ''}:${S.dexRecords[k]?.lost ?? ''}`)
     .join(',');
-  const journal = S.expJournal || [];
-  const journalSig = `${journal.length}:${journal[0]?.day ?? ''}:${journal[0]?.no ?? ''}:${journal[0]?.expId ?? ''}`;
   const costSig = `${S.stats?.experimentSpent || 0}:${S.stats?.corpseSpent || 0}`;
-  return `${S.dex.join(',')}|${research}|${losses}|${recs}|${journalSig}|${costSig}`;
+  return `${S.dex.join(',')}|${research}|${losses}|${recs}|${costSig}`;
 }
 
 function ensureDexPage() {
@@ -1826,17 +1755,11 @@ function ensureDexPage() {
   const totalLost = Object.keys(S.dexRecords || {}).reduce((sum, id) => sum + (S.dexRecords[id]?.lost || 0), 0);
   const experimentCost = Math.max(0, Number(S.stats?.experimentSpent) || 0);
   const corpseCost = Math.max(0, Number(S.stats?.corpseSpent) || 0);
-  host.innerHTML = `<div class="dex-grid">${dexCellsHtml()}</div>
-    <div class="section-title">实验成本</div>
-    <div class="stats-grid">
-      <div class="kv"><span class="k">实验行为消耗</span><span class="v">🪙 ${fmt(experimentCost)}</span></div>
-      <div class="kv"><span class="k">遗体处理消耗</span><span class="v">🪙 ${fmt(corpseCost)}</span></div>
-      <div class="kv"><span class="k">合计</span><span class="v">🪙 ${fmt(experimentCost + corpseCost)}</span></div>
+  host.innerHTML = `<div class="dex-summary">
+      <div class="kv"><span class="k">实验总成本</span><span class="v">🪙 ${fmt(experimentCost + corpseCost)}</span></div>
+      <div class="kv"><span class="k">累计损耗</span><span class="v">${totalLost} 只</span></div>
     </div>
-    <div class="section-title">研究记录 · 已完成 ${S.dex.length} 条${totalLost ? ` · 累计损耗 ${totalLost} 只` : ''}</div>
-    <div class="dex-records">${dexRecordsHtml()}</div>
-    <div class="section-title">实验日志 · 最近 ${Math.min(50, (S.expJournal || []).length)} 条</div>
-    <div class="exp-journal">${expJournalRowsHtml(null, 50)}</div>`;
+    <div class="dex-grid">${dexCellsHtml()}</div>`;
 }
 
 function ranksModalHtml() {
@@ -1889,11 +1812,11 @@ function helpModalHtml() {
     `<div class="help">
       <p>你是年轻的大木博士，被“请”进火箭队的地下基地：替他们管理与运营抢来的宝可梦，同时偷偷记录每一只的数据，为日后那本研究笔记写下第一手说明。</p>
       <ul>
-        <li><b>繁育</b>：栏位里放两只就会积累繁育条。条满时如果条件正常（一雄一雌、蛋组交叠）就会产蛋，母体因此损耗耐受度（低等级母体大约撑 3 只后代，等级越高越耐用）；没有雌性时由<b>百变怪</b>承担损耗，雄性不掉耐受度。条件不正常，两只就会争斗——<b>较弱的那只阵亡</b>，另一只受伤；只有同性、蛋组不匹配会真的打起来，文案会点明原因。<b>两只百变怪</b>与<b>未发现蛋组的物种</b>放不进同一栏；<b>无性别</b>的宝可梦不会跟任何配对打起来，只会静默地配不上。争斗与力竭死亡会在培育栏留下<b>遗体</b>，要花金币处理才能放新的。新个体有 <b>1/4096</b> 概率闪光，<b>2/4096</b> 概率不孕（♀）/不育（♂）；不孕不育无法配种，但不会因此争斗。只有异性且蛋组不匹配导致的配对失败会锁定物种组合，可以在选择列表里<b>免费解除</b>；同性争斗、力竭等其他失败不记录，也不锁定。</li>
+        <li><b>繁育</b>：栏位里放两只就会积累繁育条。条满时如果条件正常（一雄一雌、蛋组交叠）就会产蛋，母体因此损耗耐受度（低等级母体大约撑 3 只后代，等级越高越耐用）；没有雌性时由<b>百变怪</b>承担损耗，雄性不掉耐受度。条件不正常，两只就会争斗——<b>较弱的那只阵亡</b>，另一只受伤；只有同性、蛋组不匹配会真的打起来，文案会点明原因。<b>两只百变怪</b>与<b>未发现蛋组的物种</b>放不进同一栏；<b>无性别</b>的宝可梦不会跟任何配对打起来，只会静默地配不上。争斗与力竭死亡会在培育栏留下<b>遗体</b>，要花金币处理才能放新的。新个体有 <b>1/4096</b> 概率闪光，<b>2/4096</b> 概率不孕（♀）/不育（♂）；不孕不育无法配种，但不会因此争斗。只有异性且蛋组不匹配导致的配对失败会永久锁定物种组合，选择列表中显示为不可用；同性争斗、力竭等其他失败不记录，也不锁定。</li>
         <li><b>蛋组</b>：博士一开始并不知道任何宝可梦的蛋组，界面上只显示 ???。只有亲手繁育出蛋，才会确认两边交汇的那个蛋组。</li>
         <li><b>孵化</b>：蛋在孵化器中倒计时，孵出的永远是该家族的<b>最初形态</b>；孵化步数越高越慢，升级孵化器可加速并增加蛋位。孵出后默认进<b>围栏</b>，要自己放进培育栏。蛋位满了繁育会暂停，培育栏会提示原因。</li>
-        <li><b>养成</b>：栏位中的宝可梦会持续获得经验，喂<b>经验糖果</b>可加速成长；不在栏位也不在实验室的会待在<b>围栏</b>里。围栏顶部用开关在「培育相关」（培育栏物种及其进化链）与「其它」之间切换，一次只显示一段；霸凌致死留下的遗体单独放在「遗体」栏。围栏里同种同性达到 4 只后，最弱的那只会被持续霸凌、耐受度下降；移走一只即可停止。霸凌致死会留下遗体，需要花金币处理。</li>
-        <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的研究笔记条目，<b>没有免费的实验</b>。每种实验都有冷却，越深入的实验冷却越久（最长 30 秒）；该物种研究完成后冷却取消。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽死亡，或花金币处理；死亡的实验对象会留下遗体，同样占用实验台，必须付费处理才能空出；实验具体影响不会事先显示。已执行过的行为会标“已记录”。每次实验会先播放加载条，再展示实验结果与实验日志；手动处理活体会记入日志和损耗。<b>该物种研究 100% 之后不再记录任何实验日志</b>，死亡后的遗体处理也不重复记录。</li>
+        <li><b>养成</b>：栏位中的宝可梦会持续获得经验，喂<b>经验糖果</b>可加速成长；不在栏位也不在实验室的会待在<b>围栏</b>里。围栏顶部用开关在「培育相关」（培育栏物种及其进化链）与「其它」之间切换，一次只显示一段；霸凌致死留下的遗体单独放在「遗体」栏。围栏里同种同性达到 4 只后，最弱的那只会被持续霸凌、耐受度下降；移走一只即可停止；<b>百变怪不会被霸凌</b>。霸凌致死会留下遗体，需要花金币处理。</li>
+        <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的研究笔记条目，<b>没有免费的实验</b>。每种实验都有冷却，越深入的实验冷却越久（最长 30 秒）；该物种研究完成后冷却取消。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽死亡，或花金币处理；死亡的实验对象会留下遗体，同样占用实验台，必须付费处理才能空出；实验具体影响不会事先显示。已执行过的行为会标“已记录”。每次实验会先播放加载条，结束后只显示实验状态与实验日志，不展示结果文案；手动处理活体会记入日志和损耗。<b>该物种研究 100% 之后不再记录任何实验日志</b>，死亡后的遗体处理也不重复记录。</li>
         <li><b>耐受度</b>：上限随等级提高（Lv.1 为 100，每级 +2），<b>雄性再乘 1.25</b>；出厂即满，但只有进了实验室才能在界面上看到。繁育、争斗、霸凌、实验都会消耗它，归零即死亡：实验室个体留下遗体占位，围栏里被霸凌致死的个体留下遗体等待处理，培育栏里死亡的个体也会留下遗体（需付费处理），其他情况离队。物种研究完成后，只剩最伤身的那种实验还能用。</li>
         <li><b>能力值</b>：刚接触的物种看不全能力值。随着该物种的研究进度，能力项会按种族值从高到低逐项披露。</li>
         <li><b>研究笔记</b>：研究过的物种会显示灰度图标和进度，100% 完成后才变成彩色；已完成条目会记录完成日期与损耗掉的个体数，物种详情和研究笔记页还会显示最近的实验日志（含处理记录）。</li>

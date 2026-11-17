@@ -1,22 +1,15 @@
 // 逻辑层冒烟测试：模拟 300 天，检查不变量与经济
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import * as L from '../js/logic.mjs';
 import { CONFIG, RANKS, BASE_EXPERIMENTS, EXPERIMENT_TIERS, DEPARTMENTS, BRED_SOURCE, EGG_SOURCES, UPGRADE_INFO, maxTolerance } from '../js/rules.mjs';
 import { serialize, deserialize } from '../js/save.mjs';
 import { initDex, initExperiments, sp, bst } from '../js/data.mjs';
-import { initBaseResults, seedSpeciesResults } from '../js/results.mjs';
 
 const dex = JSON.parse(await readFile(fileURLToPath(new URL('../data/dex.json', import.meta.url)), 'utf8'));
 initDex(dex);
 const experimentData = JSON.parse(await readFile(fileURLToPath(new URL('../data/experiments.json', import.meta.url)), 'utf8'));
 initExperiments(experimentData);
-initBaseResults(JSON.parse(await readFile(fileURLToPath(new URL('../data/results/base.json', import.meta.url)), 'utf8')));
-for (const file of await readdir(new URL('../data/results/', import.meta.url))) {
-  if (/^\d+\.json$/.test(file)) {
-    seedSpeciesResults(Number(file.replace('.json', '')), JSON.parse(await readFile(new URL(`../data/results/${file}`, import.meta.url), 'utf8')));
-  }
-}
 
 let failures = 0;
 const check = (cond, label, extra = '') => {
@@ -186,8 +179,10 @@ check(L.sellMon(lab, subject.uid).ok === false, '实验室里的不能出售');
 const gold0 = lab.gold;
 const exp1 = L.startExperiment(lab, subject.uid, 'measure');
 check(exp1.ok && !exp1.released, '基础体测成功');
-check(exp1.result?.survived === true && [...exp1.result.text].length > 0, '实验返回生还结果文案', `${[...(exp1.result?.text || '')].length}字`);
+check(exp1.result?.survived === true, '实验返回生还状态');
+check(!('text' in (exp1.result || {})), '实验返回值不再包含结果文案');
 check(lab.expJournal?.[0]?.no === subject.no && lab.expJournal[0].expName === '基础体测', '实验写入个体日志');
+check(!('result' in (lab.expJournal?.[0] || {})), '实验日志不再写入结果文案');
 check(exp1.intensity > 0 && exp1.intensity <= 1, '实验返回动效烈度', `(${exp1.intensity})`);
 check(subject.tolerance < maxTolerance(subject), '耐受度下降', `(${subject.tolerance})`);
 check(L.researchProgress(lab, 16) === 2, '研究进度 +2（已下调）');
@@ -222,7 +217,8 @@ while (!L.isResearched(lab, 16) && guard2 < 400) {
 }
 check(L.isResearched(lab, 16), '累计进度达到要求');
 const completedLog = (lab.expJournal || []).find((e) => e.completed);
-check(completedLog?.dexId === 16 && completedLog.result.length > 0, '完成研究的实验日志带完成标记');
+check(completedLog?.dexId === 16 && completedLog.completed === true, '完成研究的实验日志带完成标记');
+check(!('result' in (completedLog || {})), '完成研究的日志不含结果文案');
 check(Object.keys(lab.expCd).length === 0, '研究完成时清空所有实验冷却');
 check(L.experimentCooldownFor(lab, subject, 'sp16-stress-threshold') === 0, '研究完成后不再有冷却');
 check(lab.dex.includes(16), '研究完成后解锁研究笔记');
@@ -271,8 +267,9 @@ weak.tolerance = 3;
 const goldBefore = lab2.gold;
 const overload = L.startExperiment(lab2, weak.uid, 'sp19-incisor-wear');
 check(overload.ok && overload.released, '超出耐受会放生');
-check(overload.result?.survived === false && [...overload.result.text].length > 0, '超载返回死亡结果文案', overload.result?.text);
-check(lab2.expJournal?.[0]?.cause === 'overload' && lab2.expJournal[0].result === overload.result.text, '死亡结果写入实验日志');
+check(overload.result?.survived === false, '超载返回死亡状态');
+check(!('text' in (overload.result || {})), '超载结果不包含文案');
+check(lab2.expJournal?.[0]?.cause === 'overload' && !('result' in (lab2.expJournal?.[0] || {})), '死亡日志不写入结果文案');
 check(Number.isInteger(overload.corpseSlot), '死亡结果带遗体槽位');
 check(overload.msg.includes('断了气'), '超载实验使用死亡文案', overload.msg);
 check(L.monByUid(lab2, weak.uid) === null, '放生后从名单移除');
@@ -289,7 +286,8 @@ lab3.expLog = { 16: Object.fromEntries(L.experimentsFor(16).map((e) => [e.id, 1]
 edge.tolerance = L.toleranceLoss(edge, BASE_EXPERIMENTS[0]);
 const exact = L.startExperiment(lab3, edge.uid, 'measure');
 check(exact.released, '耐受归零时放生');
-check(exact.result?.survived === false && [...exact.result.text].length > 0, '耐受归零返回死亡结果文案', exact.result?.text);
+check(exact.result?.survived === false, '耐受归零返回死亡状态');
+check(!('text' in (exact.result || {})), '耐受归零结果不包含文案');
 check(exact.corpseSlot === 0 && lab3.expJournal?.[0]?.survived === false, '耐受归零记录遗体与死亡日志');
 check(exact.msg.includes('没能走下实验台'), '耐受归零使用死亡文案', exact.msg);
 check(L.researchProgress(lab3, 16) === 2, '归零前进度已结算');
@@ -825,13 +823,7 @@ check(lockEv1.some((e) => e.failedPair), '锁定的对第一次会警告');
 check(!lockEv2.some((e) => e.failedPair), '锁定的对不会重复警告');
 check((lockTwice.stats.fights || 0) === 0, '锁定的对不争斗');
 check(lockTwice.pens[0].breed === 0, '锁定的对不空转繁育条');
-
-// 解除记忆是免费的，解除后可以重新尝试
-check(L.forgetFailedPair(lockTwice, 16, 74) === true, '可以免费解除失败记忆');
-check(!L.failedPair(lockTwice, 16, 74), '解除后不再锁定');
-check(L.forgetFailedPair(lockTwice, 16, 74) === false, '重复解除返回 false');
-L.tick(lockTwice, 3);
-check(lockTwice.stats.fights === 1, '解除后会重新尝试并争斗');
+check(L.failedPair(lockTwice, 16, 74), '锁定关系持续保留');
 
 // 培育栏遗体：占位 + 付费处理
 const penCorpse = L.newGame(4206);
@@ -1003,6 +995,19 @@ check(Math.abs(b1Tol - b1.tolerance - CONFIG.bullyRatePerExtraDay) < 1e-6, '4 �
 check([b2, b3, b4].every((m) => m.tolerance === maxTolerance(m)), '霸凌只伤害最弱的那只');
 const bullyConflicts = L.idleConflicts(idleBully);
 check(bullyConflicts.length === 1 && bullyConflicts[0].weakestUid === b1.uid, '冲突信息标记最弱个体');
+
+// 百变怪不会被霸凌，也不形成霸凌群体
+const dittoBully = L.newGame(82021);
+const dt1 = L.createMon(dittoBully, 132, CONFIG.maxLevel, { gender: 'x' });
+const dt2 = L.createMon(dittoBully, 132, CONFIG.maxLevel, { gender: 'x' });
+const dt3 = L.createMon(dittoBully, 132, CONFIG.maxLevel, { gender: 'x' });
+const dt4 = L.createMon(dittoBully, 132, CONFIG.maxLevel, { gender: 'x' });
+dt1.tolerance -= 10;
+dittoBully.mons = [dt1, dt2, dt3, dt4];
+const dt1Tol = dt1.tolerance;
+L.tick(dittoBully, 1);
+check(dt1.tolerance === dt1Tol, '百变怪不会被同类霸凌');
+check(L.idleConflicts(dittoBully).length === 0, '百变怪不产生霸凌冲突');
 
 const idleCalm = L.newGame(8203);
 const h1 = L.createMon(idleCalm, 16, CONFIG.maxLevel, { gender: 'm' });

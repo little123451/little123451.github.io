@@ -1,8 +1,7 @@
 // UI 集成测试：用最小 DOM 桩驱动 ui.mjs，检查渲染与交互不抛错
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { initDex, initExperiments, sp, DEX } from '../js/data.mjs';
-import { initBaseResults, seedSpeciesResults } from '../js/results.mjs';
 import { CONFIG, RANKS, maxTolerance } from '../js/rules.mjs';
 import * as L from '../js/logic.mjs';
 import * as UI from '../js/ui.mjs';
@@ -11,12 +10,6 @@ const dex = JSON.parse(await readFile(fileURLToPath(new URL('../data/dex.json', 
 initDex(dex);
 const experimentData = JSON.parse(await readFile(fileURLToPath(new URL('../data/experiments.json', import.meta.url)), 'utf8'));
 initExperiments(experimentData);
-initBaseResults(JSON.parse(await readFile(fileURLToPath(new URL('../data/results/base.json', import.meta.url)), 'utf8')));
-for (const file of await readdir(new URL('../data/results/', import.meta.url))) {
-  if (/^\d+\.json$/.test(file)) {
-    seedSpeciesResults(Number(file.replace('.json', '')), JSON.parse(await readFile(new URL(`../data/results/${file}`, import.meta.url), 'utf8')));
-  }
-}
 
 let failures = 0;
 const check = (cond, label, extra = '') => {
@@ -113,6 +106,7 @@ state.mons.push(specialMon);
 L.assignPen(state, 2, 'a', specialMon.uid);
 UI.render();
 check(makeEl('#pens').innerHTML.includes('shiny'), '闪光个体卡片带闪光样式');
+check(makeEl('#pens').innerHTML.includes('data/sprites/shiny/16.png'), '闪光个体使用本地闪光贴图');
 check(makeEl('#pens').innerHTML.includes('✨'), '闪光个体显示闪光标记');
 check(makeEl('#pens').innerHTML.includes('不孕'), '不孕个体显示不孕标记');
 check(makeEl('#pens').innerHTML.includes(`#${String(specialMon.no).padStart(4, '0')}`), '培育栏卡片显示个体编号');
@@ -141,7 +135,8 @@ UI.render();
 click('open-picker', { pen: '2', slot: 'b' });
 const blockedBtn = makeEl('#modal').innerHTML.match(new RegExp(`data-uid="${pairB.uid}"[^>]*disabled`));
 check(!!blockedBtn, '曾配对失败的物种按钮禁用');
-check(makeEl('#modal').innerHTML.includes('曾与波波配对失败'), '禁用按钮显示失败原因');
+check(!makeEl('#modal').innerHTML.includes('配对失败') && !makeEl('#modal').innerHTML.includes('class="pr"'), '锁定卡片不显示失败原因');
+check(!makeEl('#modal').innerHTML.includes('解除记忆'), '锁定卡片不再提供解除入口');
 click('close');
 L.removeFromPen(state, pairA.uid);
 state.mons = state.mons.filter((m) => m.uid !== pairA.uid && m.uid !== pairB.uid);
@@ -284,6 +279,7 @@ click('close');
 
 click('open-picker', { pen: '1', slot: 'a' });
 check(makeEl('#modal').innerHTML.includes('选择宝可梦'), '培育栏空位仍可打开选择弹窗');
+check(!makeEl('#modal').innerHTML.includes('空闲'), '栏位选择列表不显示空闲状态');
 check(makeEl('#modal').innerHTML.includes('data-act="assign"'), '选择弹窗仍能放入栏位');
 check(!makeEl('#modal').innerHTML.includes(`data-uid="${state.mons[0].uid}"`), '已在培育栏的个体不出现在选择列表');
 click('close');
@@ -335,7 +331,8 @@ click('open-dex');
 check(makeEl('#page-dex').classList.contains('active'), '研究笔记页可切换显示');
 check(!makeEl('#page-pens').classList.contains('active'), '切换后培育页隐藏');
 check(makeEl('#dex-page').innerHTML.split('dex-cell').length - 1 === 151, '研究笔记含 151 个格子');
-check(makeEl('#dex-page').innerHTML.includes('研究记录'), '研究笔记含研究记录区');
+check(makeEl('#dex-page').innerHTML.includes('实验总成本') && makeEl('#dex-page').innerHTML.includes('累计损耗'), '研究笔记顶部显示成本与损耗');
+check(!makeEl('#dex-page').innerHTML.includes('研究记录') && !makeEl('#dex-page').innerHTML.includes('实验日志'), '研究笔记底部不再显示元信息');
 click('tab', { tab: 'pens' });
 check(makeEl('#page-pens').classList.contains('active') && !makeEl('#page-dex').classList.contains('active'), '可以切回培育 TAB');
 
@@ -468,6 +465,7 @@ check(!makeEl('#lab').innerHTML.includes('bar egg'), '研究进度条不再套�
 click('open-exp', { uid: labMon.uid });
 const expHtml = makeEl('#modal').innerHTML;
 check(expHtml.includes('进行实验'), '实验弹窗可打开');
+check(!expHtml.includes('正在调取实验记录'), '打开实验不再加载结果文案');
 check(expHtml.includes('基础体测') && expHtml.includes('扬沙观察'), '实验弹窗列出基础与专属实验');
 check(!expHtml.includes('预计'), '实验弹窗不展示耐受预估');
 check(expHtml.includes('研究进度') && !expHtml.includes('已记录 0/') && !expHtml.includes('还差'), '实验弹窗不再显示行为记录进度');
@@ -481,14 +479,14 @@ const goldBeforeExp = state.gold;
 click('run-exp', { uid: labMon.uid, exp: 'sample' });
 check(state.gold === goldBeforeExp - 45, '执行实验扣资金', `(${goldBeforeExp}→${state.gold})`);
 check(L.researchProgress(state, 16) > 0, '实验增加物种研究进度');
-check(makeEl('#modal').innerHTML.includes('实验结束') && makeEl('#modal').innerHTML.includes('组织采样'), '实验后展示结果卡');
+check(makeEl('#modal').classList.contains('hidden'), '生还实验结束后直接回到页面');
+check(!makeEl('#modal').innerHTML.includes('exp-result-text'), '生还结果卡不再展示结果文案');
+check(!('result' in ((state.expJournal || [])[0] || {})), '实验日志不写入结果文案');
 check(!makeEl('#modal').innerHTML.includes('实验结束 · 生还') && !makeEl('#modal').innerHTML.includes('生还'), '生还结果标题不再显示状态');
 check(makeEl('#lab-1').classList.contains('experiment-hit'), '实验对象播放命中反馈动画');
 check(Number(makeEl('#lab-1').style['--hit']) > 0, '命中动画带强度参数', makeEl('#lab-1').style['--hit']);
 const resBar = makeEl('#lab-1-resbar');
 check(resBar.style.width && resBar.style.width !== '0.0%', '研究进度条随实验更新', resBar.style.width);
-click('close');
-check(makeEl('#modal').classList.contains('hidden'), '结果卡可收起');
 click('open-exp', { uid: labMon.uid });
 UI.render();
 const reopenedExpHtml = makeEl('#modal').innerHTML;
@@ -532,6 +530,9 @@ L.assignLab(state, 1, processLogMon.uid);
 state.gold = 100;
 check(L.processLabSlot(state, 1).logged, '未满 100% 的活体处理可写日志');
 UI.render();
+click('open-species', { id: '17' });
+check(makeEl('#modal').innerHTML.includes('实验对象被「处理」了'), '处理日志使用统一文案');
+click('close');
 
 // 实验死亡 → 遗体占位 → 付费处理
 const labDead = L.createMon(state, 16, 5, { gender: 'm' });
@@ -561,19 +562,14 @@ check(state.gold === goldBeforeCorpse - corpseCost, '处理遗体扣费', `(${co
 
 click('open-dex');
 check(makeEl('#dex-page').innerHTML.includes('%') || makeEl('#dex-page').innerHTML.includes('完成'), '研究笔记显示研究进度');
-check(makeEl('#dex-page').innerHTML.includes('实验成本'), '研究笔记显示实验成本区');
 state.stats.experimentSpent = 1234;
 state.stats.corpseSpent = 56;
 UI.render();
-check(makeEl('#dex-page').innerHTML.includes('实验行为消耗') && makeEl('#dex-page').innerHTML.includes('1,234'), '研究笔记显示实验行为总消耗');
-check(makeEl('#dex-page').innerHTML.includes('遗体处理消耗') && makeEl('#dex-page').innerHTML.includes('56'), '研究笔记显示遗体处理总消耗');
-check(makeEl('#dex-page').innerHTML.includes('1,290'), '研究笔记显示实验总成本');
-check(makeEl('#dex-page').innerHTML.includes('实验日志'), '研究笔记显示实验日志区');
-// 日志条目展示的是实验行为描述，而不是行为名称
-check(makeEl('#dex-page').innerHTML.includes(sampleDesc), '实验日志展示实验行为描述');
-check(!(state.expJournal || []).some((e) => e.expId === 'sp16-stress-threshold' && !e.survived), '研究满后死亡不再写入日志');
-check(!makeEl('#dex-page').innerHTML.includes('实验结束后对象死亡'), '研究满后日志不显示死亡结语');
-check(makeEl('#dex-page').innerHTML.includes('处理'), '实验日志包含被处理记录');
+const dexSummaryHtml = makeEl('#dex-page').innerHTML;
+check(dexSummaryHtml.includes('实验总成本') && dexSummaryHtml.includes('1,290'), '研究笔记顶部显示实验总成本');
+check(dexSummaryHtml.includes('累计损耗'), '研究笔记顶部显示累计损耗');
+check(!dexSummaryHtml.includes('实验日志') && !dexSummaryHtml.includes('研究记录'), '研究笔记底部不再显示研究记录与实验日志');
+check(!dexSummaryHtml.includes('实验行为消耗') && !dexSummaryHtml.includes('遗体处理消耗'), '研究笔记不再显示成本明细');
 click('tab', { tab: 'pens' });
 
 // 研究笔记显示规则：研究中灰度、完成彩色、显示研究损耗
@@ -603,8 +599,7 @@ check(!makeEl('#dex-page').innerHTML.includes('dex-cell partial'), '不再出现
 state.dex.push(25);
 state.dexRecords[25] = { day: 5, experiments: { measure: 2 }, lost: 3 };
 UI.render();
-check(makeEl('#dex-page').innerHTML.includes('损耗 3 只'), '研究记录显示损耗的个体数');
-check(makeEl('#dex-page').innerHTML.includes('累计损耗 3 只'), '研究记录汇总累计损耗');
+check(makeEl('#dex-page').innerHTML.includes('累计损耗') && makeEl('#dex-page').innerHTML.includes('3 只'), '研究笔记顶部汇总累计损耗');
 
 const doneMon = L.createMon(state, 25, 5, { gender: 'm' });
 state.mons.push(doneMon);
@@ -626,8 +621,8 @@ state.expJournal.unshift({
   completed: true,
 });
 UI.render();
-check(makeEl('#dex-page').innerHTML.includes(`对${sp(25).zh}的研究完成了`), '研究完成日志显示完成文案');
-check(makeEl('#dex-page').innerHTML.includes('completed'), '研究完成日志带特殊样式');
+const dexAfterLog = makeEl('#dex-page').innerHTML;
+check(!dexAfterLog.includes('实验日志') && !dexAfterLog.includes(`对${sp(25).zh}的研究完成了`), '研究笔记不再展示完成后的实验日志');
 
 state.speciesSpend = { 25: { exp: 321, corpse: 45 } };
 click('open-species', { id: '25' });
@@ -704,10 +699,10 @@ check(makeEl('#modal').innerHTML.includes(measureDesc), '加载界面展示实�
 check(!!makeEl('#exp-progress'), '加载界面显示进度条');
 check(!makeEl('#modal').innerHTML.includes('实验记录中') && !makeEl('#modal').innerHTML.includes('exp-progress-text'), '加载界面不显示百分比数据和关闭提示');
 await new Promise((resolve) => setTimeout(resolve, 120));
-check(makeEl('#modal').innerHTML.includes('实验结束'), '加载结束后展示实验结果卡');
+check(makeEl('#modal').classList.contains('hidden'), '加载结束后不弹出结果文案卡');
+check((loadingState.expJournal || []).some((e) => e.expId === 'measure'), '加载完成后写入实验日志');
 check(loadingState.gold < 1800, '加载完成后结算实验');
 UI.setExperimentLoading(false);
-click('close');
 
 // 围栏开关：培育相关 / 其它 一次只显示一段；遗体单独成栏
 const sectionState = L.newGame(7777);
@@ -751,15 +746,13 @@ check(makeEl('#egg-hint').textContent.includes('已满'), '蛋位满时孵化器
 check(makeEl('#pen-0-warn').textContent.includes('孵化器已满'), '蛋位满时培育栏说明暂停原因', makeEl('#pen-0-warn').textContent);
 check(!makeEl('#pen-0-breed').classList.contains('paused'), '蛋位满不属于“注定配不成”，条不置灰');
 
-// 锁定的配对：条置灰 + 免费解除
+// 锁定的配对：条置灰，显示原因但不提供解除入口
 failUi.failedPairs = ['16-21'];
 failUi.eggs = [];
 UI.render();
 check(makeEl('#pen-0-breed').classList.contains('paused'), '锁定的配对把繁育条置灰');
-check(makeEl('#pen-0-warn').innerHTML.includes('解除记忆'), '锁定的配对提供解除按钮');
-check(makeEl('#pen-0-warn').innerHTML.includes('曾配对失败'), '锁定的配对说明原因', makeEl('#pen-0-warn').innerHTML);
-click('forget-failed-pair', { a: '16', b: '21' });
-check((failUi.failedPairs || []).length === 0, '解除按钮清掉失败记忆');
+check(!makeEl('#pen-0-warn').textContent.includes('解除记忆'), '锁定的配对不再提供解除按钮');
+check(makeEl('#pen-0-warn').textContent.includes('曾配对失败'), '锁定的配对说明原因', makeEl('#pen-0-warn').textContent);
 
 // 培育栏遗体：占位卡片 + 付费处理入口
 const corpseUi = L.newGame(8889);
@@ -816,7 +809,7 @@ UI.setState(researchUi);
 check(makeEl('#log').innerHTML.includes('日志落盘测试'), '重新挂载后日志能回播');
 check(!makeEl('#log').innerHTML.includes('需求过期测试'), '内部过期记录不回播');
 
-// 实验日志：同一编号视觉合并
+// 实验日志：仍写入数据，但研究笔记页不再展示
 const journalUi = L.newGame(8892);
 journalUi.expJournal = [
   { day: 5, no: 7, dexId: 16, level: 12, expId: 'measure', expName: '基础体测', survived: true, result: '甲' },
@@ -826,11 +819,9 @@ journalUi.expJournal = [
 UI.setState(journalUi);
 UI.render();
 const journalHtml = makeEl('#dex-page').innerHTML;
-check((journalHtml.match(/exp-journal-group/g) || []).length === 2, '同一编号合并成一组、不同编号分开');
-check((journalHtml.match(/exp-journal-head/g) || []).length === 2, '每组只渲染一个编号头');
-check(journalHtml.includes('#0007') && journalHtml.includes('#0009'), '编号头显示个体编号');
+check(!journalHtml.includes('exp-journal') && !journalHtml.includes('#0007'), '研究笔记页不再渲染实验日志');
 
-// 未满研究的物种：实验死亡仍然写入日志并显示死亡结语
+// 未满研究的物种：实验死亡仍写入数据，但不在研究笔记页显示结语
 const deathLogUi = L.newGame(8893);
 const dlMon = L.createMon(deathLogUi, 17, 10, { gender: 'm' });
 deathLogUi.mons.push(dlMon);
@@ -841,8 +832,26 @@ const dlExp = L.experimentsFor(17)[0];
 L.startExperiment(deathLogUi, dlMon.uid, dlExp.id);
 UI.setState(deathLogUi);
 UI.render();
-check((deathLogUi.expJournal || []).some((e) => e.expId === dlExp.id && !e.survived), '未满研究的死亡写入实验日志');
-check(makeEl('#dex-page').innerHTML.includes('实验结束后对象死亡'), '未满研究的日志显示死亡结语');
+check((deathLogUi.expJournal || []).some((e) => e.expId === dlExp.id && !e.survived), '未满研究的死亡仍写入实验日志数据');
+check(!makeEl('#dex-page').innerHTML.includes('实验结束后对象死亡'), '研究笔记页不显示实验日志死亡结语');
+
+// 物种详情实验日志：同一个体同一天的连续记录只显示一次日期
+const dateLogUi = L.newGame(8894);
+dateLogUi.expJournal = [
+  { day: 55, no: 7, dexId: 16, level: 12, expId: 'measure', expName: '基础体测', survived: true },
+  { day: 55, no: 7, dexId: 16, level: 12, expId: 'sample', expName: '组织采样', survived: true },
+  { day: 4, no: 7, dexId: 16, level: 12, expId: 'battle', expName: '对战测试', survived: true },
+  { day: 55, no: 8, dexId: 16, level: 12, expId: 'measure', expName: '基础体测', survived: true },
+];
+UI.setState(dateLogUi);
+UI.render();
+click('open-species', { id: '16' });
+const dateLogHtml = makeEl('#modal').innerHTML;
+const dateLogDesc = L.experimentsFor(16).find((e) => e.id === 'measure').desc;
+check(dateLogHtml.includes(dateLogDesc) && !dateLogHtml.includes(`「${dateLogDesc}」`), '实验行为描述不带引号');
+check((dateLogHtml.match(/<span class="d">D55<\/span>/g) || []).length === 2, '同一个体同日只显示一次日期');
+check((dateLogHtml.match(/<span class="d">D4<\/span>/g) || []).length === 1, '日期变化时重新显示');
+click('close');
 
 console.log(`\n${failures === 0 ? 'UI 测试全部通过 ✓' : `${failures} 项失败 ✗`}`);
 process.exit(failures ? 1 : 0);

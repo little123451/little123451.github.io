@@ -1,7 +1,6 @@
 // 纯逻辑层：不接触 DOM，可被 Node 直接测试。
 // 规则数据（数值 / 静态表）在 rules.mjs；本文件只负责状态推进与行为。
 import { DEX, sp, bst, growthMultiplier, natureById, STONE_ITEMS, typeZh, ITEM_ZH, eggZh, customExperiments, experimentById } from './data.mjs';
-import { resultPoolFor } from './results.mjs';
 import {
   SAVE_VERSION,
   CONFIG,
@@ -1140,14 +1139,7 @@ function logExperiment(state, dexId, expId) {
   state.expLog[dexId][expId] = (state.expLog[dexId][expId] || 0) + 1;
 }
 
-function pickExperimentResult(state, exp, survived) {
-  const pool = resultPoolFor(exp.id);
-  const arr = survived ? pool?.survive : pool?.death;
-  if (Array.isArray(arr) && arr.length) return pickOne(state, arr);
-  return survived ? '它活了下来，但伤得很重。' : '它没能撑过这次实验。';
-}
-
-function logExperimentRun(state, mon, exp, survived, result, cause = null, completed = false) {
+function logExperimentRun(state, mon, exp, survived, cause = null, completed = false) {
   if (!state.expJournal) state.expJournal = [];
   state.expJournal.unshift({
     day: Math.floor(state.day),
@@ -1157,7 +1149,6 @@ function logExperimentRun(state, mon, exp, survived, result, cause = null, compl
     expId: exp.id,
     expName: exp.name,
     survived,
-    result,
     cause,
     completed: !!completed,
   });
@@ -1233,16 +1224,15 @@ export function startExperiment(state, uidMon, experimentId) {
   // 超出耐受：实验不生效（不扣资金、不给进度），宝可梦死亡并留下遗体
   if (loss > mon.tolerance) {
     bumpResearchLoss(state, mon.dexId);
-    const resultText = pickExperimentResult(state, exp, false);
     // 研究已满的物种不再写实验日志（noCd 此时就是"已完成研究"）
-    if (!noCd) logExperimentRun(state, mon, exp, false, resultText, 'overload');
+    if (!noCd) logExperimentRun(state, mon, exp, false, 'overload');
     const r = leaveLabCorpse(state, mon, 'overload');
     return {
       ok: true,
       released: true,
       corpse: true,
       corpseSlot: r.slot,
-      result: { text: resultText, survived: false },
+      result: { survived: false },
       msg: `实验超出了 ${r.name} 的耐受极限，${r.name} 在实验台上断了气，数据没能留下`,
     };
   }
@@ -1309,8 +1299,7 @@ export function startExperiment(state, uidMon, experimentId) {
   if (win) events.push(win);
 
   if (willBeReleased) {
-    const resultText = pickExperimentResult(state, exp, false);
-    if (!noCd) logExperimentRun(state, mon, exp, false, resultText, 'exhausted', researchCompleted);
+    if (!noCd) logExperimentRun(state, mon, exp, false, 'exhausted', researchCompleted);
     const r = leaveLabCorpse(state, mon, 'exhausted');
     events.push({ type: 'warn', msg: `${name} 的耐受度耗尽，倒在了实验台上` });
     return {
@@ -1319,16 +1308,15 @@ export function startExperiment(state, uidMon, experimentId) {
       corpse: true,
       corpseSlot: r.slot,
       events,
-      result: { text: resultText, survived: false },
+      result: { survived: false },
       msg: `实验完成，${name} 没能走下实验台`,
       loss,
       intensity,
     };
   }
 
-  const resultText = pickExperimentResult(state, exp, true);
-  if (!noCd) logExperimentRun(state, mon, exp, true, resultText, null, researchCompleted);
-  return { ok: true, events, msg: `实验完成（${exp.name}）`, loss, intensity, result: { text: resultText, survived: true } };
+  if (!noCd) logExperimentRun(state, mon, exp, true, null, researchCompleted);
+  return { ok: true, events, msg: `实验完成（${exp.name}）`, loss, intensity, result: { survived: true } };
 }
 
 // ---------- 设施 ----------
@@ -1377,21 +1365,12 @@ export function buyUpgrade(state, key) {
 //   · 条件正常：产蛋，承担损耗的一方（雌性；无雌性时是百变怪）掉耐受度
 //   · 条件不正常：两只打架，弱的那只死亡，另一只掉耐受度
 //   · 注定配不成（已锁定 / 不孕 / 无性别 / 双百变怪 / 未发现蛋组）：条不再空转，只提示一次
-// 只保留“蛋组不匹配”造成的永久组合锁定，可用 forgetFailedPair 免费解除。
+// 只保留“蛋组不匹配”造成的永久组合锁定。
 function lockFailedPair(state, a, b) {
   if (!a || !b || a.dexId === b.dexId) return;
   if (!state.failedPairs) state.failedPairs = [];
   const key = [a.dexId, b.dexId].sort((x, y) => x - y).join('-');
   if (!state.failedPairs.includes(key)) state.failedPairs.push(key);
-}
-
-// 解除“配对失败”的记忆：免费，玩家知道得更多了就该有一次重试的机会
-export function forgetFailedPair(state, aDexId, bDexId) {
-  if (!aDexId || !bDexId || aDexId === bDexId) return false;
-  const key = [aDexId, bDexId].sort((x, y) => x - y).join('-');
-  const before = (state.failedPairs || []).length;
-  state.failedPairs = (state.failedPairs || []).filter((k) => k !== key);
-  return state.failedPairs.length !== before;
 }
 
 function penSlotOf(pen, uidMon) {
@@ -1543,6 +1522,8 @@ function resolvePen(state, pen, events, penIdx = null) {
 function idleGroups(state) {
   const groups = new Map();
   for (const mon of idleMons(state)) {
+    // 百变怪不参与围栏霸凌，也不会形成霸凌群体
+    if (isDitto(mon)) continue;
     const key = `${mon.dexId}:${mon.gender}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(mon);
@@ -1643,7 +1624,7 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
     if (egg.daysLeft <= 0) hatch(state, egg, events);
   }
 
-  // 围栏霸凌：同种同性达到 4 只后，从第四个起最弱的那只被持续霸凌
+  // 围栏霸凌：同种同性达到 4 只后，从第四个起最弱的那只被持续霸凌（百变怪不参与）
   const bullyDeaths = new Set();
   for (const list of idleGroups(state).values()) {
     const n = list.length;

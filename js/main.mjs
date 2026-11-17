@@ -1,24 +1,20 @@
 // 启动：加载数据、读取存档、驱动主循环
 import { initDex, initExperiments, DEX } from './data.mjs';
-import { initBaseResults } from './results.mjs';
 import { CONFIG, RANKS } from './rules.mjs';
 import { deserialize, loadRaw, persist, clearSave } from './save.mjs';
 import * as L from './logic.mjs';
 import * as UI from './ui.mjs';
 
 async function boot() {
-  // 数据：研究笔记 + 定制实验 + 基础行为结果；物种专属结果按需加载
-  const [dexRes, expRes, resultRes] = await Promise.all([
+  // 数据：研究笔记 + 定制实验；实验结果文案暂不启用
+  const [dexRes, expRes] = await Promise.all([
     fetch('data/dex.json'),
     fetch('data/experiments.json'),
-    fetch('data/results/base.json'),
   ]);
   if (!dexRes.ok) throw new Error(`无法加载 data/dex.json（HTTP ${dexRes.status}）`);
   if (!expRes.ok) throw new Error(`无法加载 data/experiments.json（HTTP ${expRes.status}）`);
-  if (!resultRes.ok) throw new Error(`无法加载 data/results/base.json（HTTP ${resultRes.status}）`);
   initDex(await dexRes.json());
   initExperiments(await expRes.json());
-  initBaseResults(await resultRes.json());
 
   // 读档：只认当前版本，旧版本存档 deserialize 直接返回 null（重新开档）
   let loaded = { raw: null, error: null };

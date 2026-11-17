@@ -129,17 +129,18 @@ export const typeZh = (t) => TYPES_ZH[t] || t;
 export const typeColor = (t) => TYPE_COLORS[t] || '#888';
 export const eggZh = (g) => EGG_ZH[g] || g;
 
-export function sprite(id) {
-  return `data/sprites/${id}.png`;
+export function sprite(id, shiny = false) {
+  // 闪光个体使用本地闪光图，避免运行时依赖外部 CDN。
+  return shiny ? `data/sprites/shiny/${id}.png` : `data/sprites/${id}.png`;
 }
 
 // 本地图缺失时的兜底：走 jsDelivr 镜像
-export function remoteSprite(id) {
-  return `https://gcore.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/${id}.png`;
+export function remoteSprite(id, shiny = false) {
+  const folder = shiny ? 'shiny/' : '';
+  return `https://gcore.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/${folder}${id}.png`;
 }
 
-export const art = (id) => sprite(id);
-
+export const art = (id, shiny = false) => sprite(id, shiny);
 // 实际能力值（含个体值、性格修正）
 export function calcStats(mon) {
   const s = sp(mon.dexId);
