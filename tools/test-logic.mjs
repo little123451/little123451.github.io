@@ -2,7 +2,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import * as L from '../js/logic.mjs';
-import { CONFIG, RANKS, BASE_EXPERIMENTS, EXPERIMENT_TIERS, DEPARTMENTS, BRED_SOURCE, EGG_SOURCES, maxTolerance } from '../js/rules.mjs';
+import { CONFIG, RANKS, BASE_EXPERIMENTS, EXPERIMENT_TIERS, DEPARTMENTS, BRED_SOURCE, EGG_SOURCES, UPGRADE_INFO, maxTolerance } from '../js/rules.mjs';
 import { serialize, deserialize } from '../js/save.mjs';
 import { initDex, initExperiments, sp, bst } from '../js/data.mjs';
 import { initBaseResults, seedSpeciesResults } from '../js/results.mjs';
@@ -133,16 +133,6 @@ const loaded = deserialize(raw);
 check(!!loaded, '存档可反序列化');
 check(loaded.gold === state.gold && loaded.mons.length === state.mons.length, '存档字段一致');
 check(deserialize(JSON.stringify({ v: 1, mons: [] })) === null, '旧版本存档被忽略');
-
-// v2 → v3 迁移：树果改称经验糖果
-const legacy = JSON.parse(JSON.stringify(state));
-legacy.v = 2;
-legacy.berries = 77;
-delete legacy.candies;
-delete legacy.candyPrice;
-const migrated = deserialize(JSON.stringify(legacy));
-check(migrated && migrated.candies === 77, 'v2 存档迁移为经验糖果', `(${migrated?.candies})`);
-check(migrated && migrated.v === 3, '迁移后存档版本为 3');
 
 // ---------- 实验室 ----------
 const reqPidgey = L.researchRequirement(16);
@@ -733,6 +723,147 @@ L.tick(br6, 4);
 check(br6.mons.length === 2 && b6f.tolerance === maxTolerance(b6f), '孵化器满时既不产蛋也不受伤');
 check(br6.pens[0].breed >= CONFIG.breedDays, '繁育条停在满格等待');
 
+// ---------- 配对失败：拒绝放入 / 静默 / 文案分级 / 锁定 ----------
+// 双百变怪：放不进同一栏，也不会打架
+const refuse = L.newGame(4200);
+const dittoA = L.createMon(refuse, 132, 10, {});
+const dittoB = L.createMon(refuse, 132, 10, {});
+refuse.mons = [dittoA, dittoB];
+refuse.pens = Array.from({ length: 3 }, () => ({ a: null, b: null, breed: 0 }));
+check(L.assignPen(refuse, 0, 'a', dittoA.uid).ok, '百变怪可以放进空栏位');
+const dittoPut = L.assignPen(refuse, 0, 'b', dittoB.uid);
+check(dittoPut.ok === false, '两只百变怪不能放进同一栏位', dittoPut.msg);
+check(dittoPut.msg.includes('百变怪'), '拒绝理由点明是百变怪', dittoPut.msg);
+
+// 未发现蛋组（传说 / 幻兽）：放不进去
+const mewtwo = L.createMon(refuse, 150, 10, {});
+refuse.mons.push(mewtwo);
+const noEggPut = L.assignPen(refuse, 1, 'a', mewtwo.uid);
+check(noEggPut.ok === false, '未发现蛋组无法放进培育栏', noEggPut.msg);
+check(noEggPut.msg.includes('未发现蛋组'), '拒绝理由点明未发现蛋组', noEggPut.msg);
+
+// 尼多娜 / 尼多后 蛋组已修正，雌性线不再报废
+const nido = L.newGame(4207);
+const nidorina = L.createMon(nido, 30, 16, { gender: 'f' });
+const nidoranM = L.createMon(nido, 32, 16, { gender: 'm' });
+nido.mons = [nidorina, nidoranM];
+check(sp(30).eggGroups.includes('monster') && sp(31).eggGroups.includes('ground'), '尼多娜/尼多后蛋组与雄性线一致', JSON.stringify(sp(30).eggGroups));
+check(L.compatibility(nido, nidorina, nidoranM).ok, '尼多娜可以与尼多朗繁育');
+nido.pens = [{ a: nidoranM.uid, b: nidorina.uid, breed: 0 }];
+nido.eggs = [];
+L.tick(nido, 3);
+check(nido.eggs.length === 1, '尼多娜能产蛋', `(${nido.eggs.length})`);
+check(nido.eggs[0]?.dexId === 29, '蛋孵出尼多兰（最初形态）', `(${nido.eggs[0]?.dexId})`);
+
+// 两个无性别：不争斗、不产蛋、不掉耐受，只提示一次
+const quietState = L.newGame(4201);
+const magnemite = L.createMon(quietState, 81, 10, {});
+const voltorb = L.createMon(quietState, 100, 10, {});
+quietState.mons = [magnemite, voltorb];
+quietState.pens = [{ a: magnemite.uid, b: voltorb.uid, breed: 0 }];
+quietState.eggs = [];
+const quietEv = L.tick(quietState, 3);
+check(quietState.eggs.length === 0 && (quietState.stats.fights || 0) === 0, '两个无性别不产蛋也不争斗');
+check(!!L.monByUid(quietState, magnemite.uid) && !!L.monByUid(quietState, voltorb.uid), '两个无性别都还活着');
+check(magnemite.tolerance === maxTolerance(magnemite) && voltorb.tolerance === maxTolerance(voltorb), '两个无性别不掉耐受度');
+check(quietEv.some((e) => e.quiet), '两个无性别给出静默提示');
+check(quietState.pens[0].breed === 0, '无性别配对不积累繁育条');
+
+// 无性别 + 有性别：同样静默，不会打死对方
+const mixedQuiet = L.newGame(4209);
+const mxA = L.createMon(mixedQuiet, 81, 10, {});
+const mxB = L.createMon(mixedQuiet, 16, 10, { gender: 'm' });
+mixedQuiet.mons = [mxA, mxB];
+mixedQuiet.pens = [{ a: mxA.uid, b: mxB.uid, breed: 0 }];
+mixedQuiet.eggs = [];
+const mxEv = L.tick(mixedQuiet, 3);
+check(mixedQuiet.eggs.length === 0 && (mixedQuiet.stats.fights || 0) === 0, '无性别与有性别不产蛋也不争斗');
+check(!!L.monByUid(mixedQuiet, mxA.uid) && !!L.monByUid(mixedQuiet, mxB.uid), '无性别与有性别都还活着');
+check(mxEv.some((e) => e.quiet), '无性别与有性别给出静默提示');
+check(!mxEv.some((e) => e.fight), '无性别与有性别不触发争斗事件');
+check(mixedQuiet.pens[0].breed === 0, '无性别与有性别不积累繁育条');
+
+// 同性争斗：文案点明性别，且不锁定组合
+const sameSexMsg = L.newGame(4202);
+const ssM1 = L.createMon(sameSexMsg, 16, 30, { gender: 'm' });
+const ssM2 = L.createMon(sameSexMsg, 16, 3, { gender: 'm' });
+sameSexMsg.mons = [ssM1, ssM2];
+sameSexMsg.pens = [{ a: ssM1.uid, b: ssM2.uid, breed: 0 }];
+sameSexMsg.eggs = [];
+const ssEv = L.tick(sameSexMsg, 3);
+const ssFight = ssEv.find((e) => e.fight);
+check(!!ssFight && ssFight.code === 'same-sex', '同性争斗标记 same-sex', ssFight?.code);
+check(!!ssFight && ssFight.msg.includes('两只都是雄性'), '同性争斗文案点明性别', ssFight?.msg);
+check((sameSexMsg.failedPairs || []).length === 0, '同性争斗不锁定物种组合');
+
+// 蛋组不匹配：文案单独说明，并写入锁定
+const eggMsg = L.newGame(4203);
+const birdA = L.createMon(eggMsg, 16, CONFIG.maxLevel, { gender: 'm' }); // 满级不会在 tick 里进化
+const rockB = L.createMon(eggMsg, 74, 3, { gender: 'f' });
+eggMsg.mons = [birdA, rockB];
+eggMsg.pens = [{ a: birdA.uid, b: rockB.uid, breed: 0 }];
+eggMsg.eggs = [];
+const egEv = L.tick(eggMsg, 3);
+const egFight = egEv.find((e) => e.fight);
+check(!!egFight && egFight.code === 'egg-group', '蛋组不匹配标记 egg-group', egFight?.code);
+check(!!egFight && egFight.msg.includes('蛋组不合'), '蛋组不匹配的文案单独说明', egFight?.msg);
+check(L.failedPair(eggMsg, 16, 74), '异性蛋组不匹配写入永久锁定');
+
+// 锁定的对只警告一次，不重复刷屏
+const lockTwice = L.newGame(4205);
+const lockA = L.createMon(lockTwice, 16, 10, { gender: 'm' });
+const lockB = L.createMon(lockTwice, 74, 10, { gender: 'f' });
+lockTwice.mons = [lockA, lockB];
+lockTwice.failedPairs = ['16-74'];
+lockTwice.pens = [{ a: lockA.uid, b: lockB.uid, breed: 5 }];
+lockTwice.eggs = [];
+const lockEv1 = L.tick(lockTwice, 0.1);
+const lockEv2 = L.tick(lockTwice, 0.1);
+check(lockEv1.some((e) => e.failedPair), '锁定的对第一次会警告');
+check(!lockEv2.some((e) => e.failedPair), '锁定的对不会重复警告');
+check((lockTwice.stats.fights || 0) === 0, '锁定的对不争斗');
+check(lockTwice.pens[0].breed === 0, '锁定的对不空转繁育条');
+
+// 解除记忆是免费的，解除后可以重新尝试
+check(L.forgetFailedPair(lockTwice, 16, 74) === true, '可以免费解除失败记忆');
+check(!L.failedPair(lockTwice, 16, 74), '解除后不再锁定');
+check(L.forgetFailedPair(lockTwice, 16, 74) === false, '重复解除返回 false');
+L.tick(lockTwice, 3);
+check(lockTwice.stats.fights === 1, '解除后会重新尝试并争斗');
+
+// 培育栏遗体：占位 + 付费处理
+const penCorpse = L.newGame(4206);
+const pcA = L.createMon(penCorpse, 16, 30, { gender: 'm' });
+const pcB = L.createMon(penCorpse, 74, 3, { gender: 'f' });
+penCorpse.mons = [pcA, pcB];
+penCorpse.pens = [{ a: pcA.uid, b: pcB.uid, breed: 0 }];
+penCorpse.eggs = [];
+L.tick(penCorpse, 3);
+const pcPen = penCorpse.pens[0];
+check(!!pcPen.bCorpse && pcPen.b === null, '争斗死者留下遗体占住位置', JSON.stringify(pcPen).slice(0, 60));
+check(L.penCorpseCost(penCorpse, 0, 'b') === CONFIG.penCorpseProcessCost, '遗体处理费用固定 6 资金');
+const pcSpare = L.createMon(penCorpse, 16, 5, { gender: 'f' });
+penCorpse.mons.push(pcSpare);
+const corpseBlocked = L.assignPen(penCorpse, 0, 'b', pcSpare.uid);
+check(corpseBlocked.ok === false && corpseBlocked.msg.includes('遗体'), '有遗体的位置不能放新的', corpseBlocked.msg);
+penCorpse.gold = CONFIG.penCorpseProcessCost;
+const pcRes = L.processPenCorpse(penCorpse, 0, 'b');
+check(pcRes.ok && penCorpse.gold === 0, '处理遗体扣 6 资金', `(${penCorpse.gold})`);
+check(!penCorpse.pens[0].bCorpse, '处理后位置空出');
+check(L.assignPen(penCorpse, 0, 'b', pcSpare.uid).ok, '处理后可以重新放入');
+
+// 力竭的母亲也会留下遗体，事件带栏位索引
+const exhaustCorpse = L.newGame(4208);
+const exM = L.createMon(exhaustCorpse, 16, CONFIG.maxLevel, { gender: 'm' });
+const exF = L.createMon(exhaustCorpse, 21, CONFIG.maxLevel, { gender: 'f' });
+exF.tolerance = CONFIG.breedToleranceCost;
+exhaustCorpse.mons = [exM, exF];
+exhaustCorpse.pens = [{ a: exM.uid, b: exF.uid, breed: 0 }];
+exhaustCorpse.eggs = [];
+const exEv = L.tick(exhaustCorpse, 3);
+check(exEv.some((e) => e.exhausted && Number.isInteger(e.pen)), '力竭事件带栏位索引');
+check(!!exhaustCorpse.pens[0].bCorpse, '力竭的母亲留下遗体');
+
 // ---------- 围栏霸凌 ----------
 const idleFight = L.newGame(8200);
 const f1 = L.createMon(idleFight, 16, CONFIG.maxLevel, { gender: 'm' });
@@ -857,6 +988,37 @@ check(rankState.gold === 99999 - RANKS[1].cost, '晋升扣资金', `(${rankState
 check(L.buyUpgrade(rankState, 'pens').ok, '达到职级后可升级设施');
 check(L.upgradeRankReq(rankState, 'pens') === 2, '下一级需要更高职级', `(${L.upgradeRankReq(rankState, 'pens')})`);
 check(L.currentRank(rankState).name === '助理研究员', '当前职级名称正确');
+
+// ---------- 设施价格表 ----------
+// 价格/职级表以“当前等级”为下标，所以长度必须恰好等于 max（0 级…max-1 级各一项）。
+// 长度偏大 = 尾部有永远取不到的无效条目；偏小 = 末尾取到 undefined，升级变免费。
+// 起始等级以下的条目是占位（pens 从 3 级起、lab 从 2 级起），不参与校验。
+const startLevel = { pens: 3, lab: 2, incubator: 0, feeder: 0, advertising: 0, training: 0 };
+for (const [key, info] of Object.entries(UPGRADE_INFO)) {
+  check(info.costs.length === info.max, `${info.name}价格表长度 = 等级上限`, `(${info.costs.length} vs ${info.max})`);
+  check(info.rankReq.length === info.max, `${info.name}职级表长度 = 等级上限`, `(${info.rankReq.length} vs ${info.max})`);
+  const firstCost = info.costs[startLevel[key]];
+  check(Number.isFinite(firstCost) && firstCost > 0, `${info.name}首次升级不免费`, `(${firstCost})`);
+}
+
+const upgState = L.newGame(6002);
+upgState.gold = 5000;
+const incCost1 = L.upgradeCost(upgState, 'incubator');
+check(incCost1 === 1200, '孵化器首次升级 1200 资金', `(${incCost1})`);
+const slotsBefore = L.eggSlots(upgState);
+check(L.buyUpgrade(upgState, 'incubator').ok, '孵化器可以升级');
+check(upgState.gold === 5000 - 1200, '孵化器升级如实扣款', `(${upgState.gold})`);
+check(L.eggSlots(upgState) === slotsBefore + 1, '孵化器升级 +1 蛋位', `(${L.eggSlots(upgState)})`);
+check(L.upgradeCost(upgState, 'incubator') === 2600, '孵化器第二次升级 2600', `(${L.upgradeCost(upgState, 'incubator')})`);
+upgState.upgrades.incubator = UPGRADE_INFO.incubator.max;
+check(L.upgradeCost(upgState, 'incubator') === null, '孵化器满级后不再报价');
+check(L.buyUpgrade(upgState, 'incubator').ok === false, '孵化器满级后无法购买');
+
+const poorState = L.newGame(6003);
+poorState.gold = 1199;
+const poorRes = L.buyUpgrade(poorState, 'incubator');
+check(poorRes.ok === false && /资金不足/.test(poorRes.msg), '资金不足时无法免费升级孵化器', poorRes.msg);
+check(poorState.upgrades.incubator === 0 && poorState.gold === 1199, '升级失败不改变状态');
 
 // ---------- 胜利条件 ----------
 const allIds = Object.keys(dex.species).map(Number);

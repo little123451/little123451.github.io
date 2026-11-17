@@ -49,6 +49,8 @@ export const CONFIG = {
   bullyMinGroup: 4,
   bullyRatePerExtraDay: 3,
   idleCorpseProcessCost: 6,
+  // 培育栏里死亡（争斗/力竭）会留下遗体并占住该位置，处理费固定 6 资金
+  penCorpseProcessCost: 6,
   // 实验室挣扎：耐受度高于该值时缓慢下降
   labStruggleThreshold: 70,
   labStrugglePerDay: 2,
@@ -70,7 +72,6 @@ export const CONFIG = {
   // 实验室命中动效的损耗基准：损耗达到该值时动效最烈
   experimentHitLossCap: 150,
   saveKey: 'rocket-simulator-save-v3',
-  legacySaveKey: 'rocket-simulator-save-v2',
 };
 
 export const STAT_KEYS = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
@@ -189,12 +190,15 @@ export const DEPARTMENTS = [
 export const BOARD_DEPT = 'board';
 
 // ---------- 设施 ----------
-// rankReq[i]：从第 i 级升到第 i+1 级所需的职级
+// costs[l] / rankReq[l]：从第 l 级升到第 l+1 级的花费与职级门槛（下标 = 当前等级）。
+// 所以数组长度必须等于 max（0 级…max-1 级各一项）；起始等级以下的条目只是占位
+// （pens 从 3 级起、lab 从 2 级起）。
+// 不要往尾部塞多余条目——那条永远取不到；也不要在 0 起点的设施前面补 0——首次升级会变免费。
 export const UPGRADE_INFO = {
   pens: { name: '培育栏', max: 8, costs: [0, 0, 0, 2500, 5000, 9000, 15000, 24000], rankReq: [0, 0, 0, 1, 2, 3, 4, 5], desc: '增加可同时培育的空间' },
-  lab: { name: '实验台', max: 4, costs: [0, 0, 2000, 5000, 10000], rankReq: [0, 0, 1, 3, 4], desc: '增加实验室可同时研究的宝可梦' },
-  incubator: { name: '孵化器', max: 4, costs: [0, 1200, 2600, 5000, 9000], rankReq: [0, 1, 2, 3, 4], desc: '每个等级加快 10% 孵化，并 +1 蛋位' },
-  feeder: { name: '自动喂食器', max: 3, costs: [0, 1500, 3500, 7000], rankReq: [0, 1, 3, 4], desc: '自动消耗经验糖果喂养栏位中的宝可梦' },
-  advertising: { name: '广告牌', max: 3, costs: [0, 2000, 4500, 8500], rankReq: [0, 1, 3, 4], desc: '提升订单报酬，并 +1 订单位' },
-  training: { name: '训练场', max: 3, costs: [0, 1800, 4000, 8000], rankReq: [0, 1, 2, 4], desc: '提升被动经验获取速度' },
+  lab: { name: '实验台', max: 4, costs: [0, 0, 2000, 5000], rankReq: [0, 0, 1, 3], desc: '增加实验室可同时研究的宝可梦' },
+  incubator: { name: '孵化器', max: 4, costs: [1200, 2600, 5000, 9000], rankReq: [0, 1, 2, 3], desc: '每个等级加快 10% 孵化，并 +1 蛋位' },
+  feeder: { name: '自动喂食器', max: 3, costs: [1500, 3500, 7000], rankReq: [0, 1, 3], desc: '自动消耗经验糖果喂养栏位中的宝可梦' },
+  advertising: { name: '广告牌', max: 3, costs: [2000, 4500, 8500], rankReq: [0, 1, 3], desc: '提升订单报酬，并 +1 订单位' },
+  training: { name: '训练场', max: 3, costs: [1800, 4000, 8000], rankReq: [0, 1, 2], desc: '提升被动经验获取速度' },
 };

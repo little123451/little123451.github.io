@@ -90,8 +90,22 @@ export function itemIcon(item, size = 16) {
   return `<img class="item-ico ${render}" width="${size}" height="${size}" src="${itemSprite(item)}" alt="" onerror="this.onerror=null;this.src='${remoteItemSprite(item)}'" />`;
 }
 
+// 手工数据修正：PokeAPI 把尼多娜 / 尼多后标成「未发现蛋组」（第二世代起的设定），
+// 结果是尼多兰 Lv.16 自动进化后永久失去繁育能力，放进培育栏还会打死配偶，
+// 而雄性线（尼多朗→尼多力诺→尼多王）完全不受影响。
+// 这里把雌性线拉回与雄性线一致的 monster / ground，保住玩家体验。
+// dex.json 重新生成时由这里覆盖，不会被 fetch-data.mjs 冲掉。
+export const EGG_GROUP_OVERRIDES = {
+  30: ['monster', 'ground'], // 尼多娜
+  31: ['monster', 'ground'], // 尼多后
+};
+
 export function initDex(json) {
   DEX.species = json.species;
+  for (const [id, groups] of Object.entries(EGG_GROUP_OVERRIDES)) {
+    const s = DEX.species[id];
+    if (s) s.eggGroups = [...groups];
+  }
   DEX.natures = json.natures;
   DEX.count = json.count;
   return DEX;

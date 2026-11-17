@@ -162,6 +162,9 @@ click('tab', { tab: 'pens' });
 check(makeEl('#shop').innerHTML.includes('🪙'), '道具价格旁有金币图标');
 check(makeEl('#upgrades').innerHTML.includes('孵化器'), '设施渲染出孵化器');
 check(makeEl('#upgrades').innerHTML.includes('需 助理研究员'), '设施升级显示职级限制');
+// 首次升级必须标价：四个 0 级起的设施曾因价格表多一个前置 0 而白送
+check(makeEl('#upgrades').innerHTML.includes('升级 🪙 1,200'), '孵化器首次升级标价 1,200');
+check(!makeEl('#upgrades').innerHTML.includes('>升级 🪙 0<'), '设施升级不再出现免费价格');
 check(makeEl('#gold').textContent !== '', '顶栏金币已填充');
 check(makeEl('#candies').textContent !== '', '顶栏经验糖果已填充');
 check(makeEl('#rank').textContent === '见习研究员', '顶栏显示职级', makeEl('#rank').textContent);
@@ -733,6 +736,43 @@ filterState.mons = filterState.mons.slice(0, 7);
 UI.render();
 check(makeEl('#idle-filters').classList.contains('hidden'), '围栏不足 6 只时隐藏筛选栏');
 check(makeEl('#idle').innerHTML.includes(sp(16).zh) && makeEl('#idle').innerHTML.includes(sp(74).zh), '筛选关闭后显示全部个体');
+
+// 培育栏状态表达：蛋位满 / 锁定 / 遗体
+const failUi = L.newGame(8888);
+const failA = L.createMon(failUi, 16, 10, { gender: 'm' });
+const failB = L.createMon(failUi, 21, 10, { gender: 'f' });
+failUi.mons.push(failA, failB);
+failUi.pens[0] = { a: failA.uid, b: failB.uid, breed: 1.2 };
+failUi.eggs = Array.from({ length: L.eggSlots(failUi) }, (_, i) => ({ uid: `fe${i}`, dexId: 16, daysLeft: 9, total: 9 }));
+UI.setState(failUi);
+UI.render();
+check(makeEl('#egg-hint').textContent.includes('已满'), '蛋位满时孵化器提示已满', makeEl('#egg-hint').textContent);
+check(makeEl('#pen-0-warn').textContent.includes('孵化器已满'), '蛋位满时培育栏说明暂停原因', makeEl('#pen-0-warn').textContent);
+check(!makeEl('#pen-0-breed').classList.contains('paused'), '蛋位满不属于“注定配不成”，条不置灰');
+
+// 锁定的配对：条置灰 + 免费解除
+failUi.failedPairs = ['16-21'];
+failUi.eggs = [];
+UI.render();
+check(makeEl('#pen-0-breed').classList.contains('paused'), '锁定的配对把繁育条置灰');
+check(makeEl('#pen-0-warn').innerHTML.includes('解除记忆'), '锁定的配对提供解除按钮');
+check(makeEl('#pen-0-warn').innerHTML.includes('曾配对失败'), '锁定的配对说明原因', makeEl('#pen-0-warn').innerHTML);
+click('forget-failed-pair', { a: '16', b: '21' });
+check((failUi.failedPairs || []).length === 0, '解除按钮清掉失败记忆');
+
+// 培育栏遗体：占位卡片 + 付费处理入口
+const corpseUi = L.newGame(8889);
+const cuA = L.createMon(corpseUi, 16, CONFIG.maxLevel, { gender: 'm' });
+const cuB = L.createMon(corpseUi, 74, 3, { gender: 'f' });
+corpseUi.mons = [cuA, cuB];
+corpseUi.pens = [{ a: cuA.uid, b: cuB.uid, breed: 0 }];
+corpseUi.eggs = [];
+L.tick(corpseUi, 3);
+UI.setState(corpseUi);
+UI.render();
+check(makeEl('#pens').innerHTML.includes('遗体'), '培育栏显示遗体', );
+check(makeEl('#pens').innerHTML.includes('process-pen-corpse'), '培育栏遗体带处理按钮');
+check(makeEl('#pens').innerHTML.includes(`🪙 ${CONFIG.penCorpseProcessCost}`), '遗体处理按钮标价');
 
 console.log(`\n${failures === 0 ? 'UI 测试全部通过 ✓' : `${failures} 项失败 ✗`}`);
 process.exit(failures ? 1 : 0);

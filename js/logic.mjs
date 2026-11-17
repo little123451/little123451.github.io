@@ -475,16 +475,28 @@ export function compatibility(state, a, b) {
   const sb = sp(b.dexId);
   const da = isDitto(a);
   const db = isDitto(b);
-  if (da && db) return { ok: false, reason: '百变怪之间无法配种' };
+  // 两只百变怪：按设定它们不会为这种事打架，静默处理
+  if (da && db) return { ok: false, quiet: true, code: 'ditto-pair', reason: '两只百变怪凑不出什么来' };
   const groupsA = sa.eggGroups || [];
   const groupsB = sb.eggGroups || [];
-  if (!da && groupsA.includes('no-eggs')) return { ok: false, reason: `${sa.zh} 属于未发现蛋组` };
-  if (!db && groupsB.includes('no-eggs')) return { ok: false, reason: `${sb.zh} 属于未发现蛋组` };
+  // 未发现蛋组（传说 / 幻兽）：同样不会为此争斗
+  if (!da && groupsA.includes('no-eggs')) return { ok: false, quiet: true, code: 'no-eggs', reason: `${sa.zh} 属于未发现蛋组` };
+  if (!db && groupsB.includes('no-eggs')) return { ok: false, quiet: true, code: 'no-eggs', reason: `${sb.zh} 属于未发现蛋组` };
   const sterile = a.sterile ? a : b.sterile ? b : null;
   if (sterile) return { ok: false, sterile: true, reason: `${sp(sterile.dexId).zh} ${sterilityLabel(sterile)}，无法配种` };
   if (!da && !db) {
-    if (a.gender === 'x' || b.gender === 'x') return { ok: false, reason: '无性别的宝可梦无法配种' };
-    if (a.gender === b.gender) return { ok: false, reason: '需要一雄一雌' };
+    // 无性别：放进栏位不会和任何配对打起来，只是什么也不会发生
+    if (a.gender === 'x' || b.gender === 'x') {
+      const bothX = a.gender === 'x' && b.gender === 'x';
+      const odd = a.gender === 'x' ? a : b;
+      return {
+        ok: false,
+        quiet: true,
+        code: 'no-gender',
+        reason: bothX ? '两只都没有性别，凑在一起什么也没发生' : `${sp(odd.dexId).zh} 没有性别，配不了`,
+      };
+    }
+    if (a.gender === b.gender) return { ok: false, code: 'same-sex', reason: '需要一雄一雌' };
     if (!groupsA.some((g) => groupsB.includes(g))) return { ok: false, reason: '蛋组不匹配', code: 'egg-group' };
   }
   return { ok: true, reason: '可以配种' };
@@ -872,9 +884,20 @@ export function assignPen(state, penIdx, slot, uidMon) {
   if (labContains(state, uidMon)) return { ok: false, msg: '实验室里的宝可梦不能进培育栏' };
   if (penIndex(state, uidMon) !== -1) return { ok: false, msg: '它已经在培育栏里了' };
   const key = slot === 'b' ? 'b' : 'a';
+  // 该位置还躺着遗体：先处理掉才能放新的
+  if (pen[`${key}Corpse`]) return { ok: false, msg: '这个位置还留着一具遗体，先处理掉' };
+  // 未发现蛋组的物种（传说 / 幻兽）永远配不了，别让它们进去白送一条命
+  const groups = sp(mon.dexId)?.eggGroups || [];
+  if (!isDitto(mon) && groups.includes('no-eggs')) {
+    return { ok: false, msg: `${sp(mon.dexId).zh} 属于未发现蛋组，配不了` };
+  }
   const other = monByUid(state, key === 'a' ? pen.b : pen.a);
   if (other && other.dexId !== mon.dexId && failedPair(state, other.dexId, mon.dexId)) {
     return { ok: false, msg: `${sp(other.dexId).zh} 与 ${sp(mon.dexId).zh} 曾配对失败，不能再同栏` };
+  }
+  // 两只百变怪凑不出什么来，也不该为此打起来
+  if (other && isDitto(other) && isDitto(mon)) {
+    return { ok: false, msg: '两只百变怪凑不出什么来，分开放吧' };
   }
   const occupant = pen[key];
   if (occupant && occupant !== uidMon) {
@@ -884,6 +907,7 @@ export function assignPen(state, penIdx, slot, uidMon) {
   }
   pen[key] = uidMon;
   pen.breed = 0;
+  pen.notice = null;
   allocateMonNo(state, mon);
   return { ok: true, msg: `${sp(mon.dexId).zh} 进入栏位 ${penIdx + 1}` };
 }
@@ -895,6 +919,7 @@ export function removeFromPen(state, uidMon) {
   if (pen.a === uidMon) pen.a = null;
   if (pen.b === uidMon) pen.b = null;
   pen.breed = 0;
+  pen.notice = null;
   return { ok: true, msg: '已移出栏位' };
 }
 
@@ -1272,7 +1297,8 @@ export function buyUpgrade(state, key) {
 // 培育栏：两只放进去就会开始积累繁育条；满了以后——
 //   · 条件正常：产蛋，承担损耗的一方（雌性；无雌性时是百变怪）掉耐受度
 //   · 条件不正常：两只打架，弱的那只死亡，另一只掉耐受度
-// 只保留“蛋组不匹配”造成的永久组合锁定；不再记录任何配对失败历史。
+//   · 注定配不成（已锁定 / 不孕 / 无性别 / 双百变怪 / 未发现蛋组）：条不再空转，只提示一次
+// 只保留“蛋组不匹配”造成的永久组合锁定，可用 forgetFailedPair 免费解除。
 function lockFailedPair(state, a, b) {
   if (!a || !b || a.dexId === b.dexId) return;
   if (!state.failedPairs) state.failedPairs = [];
@@ -1280,41 +1306,108 @@ function lockFailedPair(state, a, b) {
   if (!state.failedPairs.includes(key)) state.failedPairs.push(key);
 }
 
+// 解除“配对失败”的记忆：免费，玩家知道得更多了就该有一次重试的机会
+export function forgetFailedPair(state, aDexId, bDexId) {
+  if (!aDexId || !bDexId || aDexId === bDexId) return false;
+  const key = [aDexId, bDexId].sort((x, y) => x - y).join('-');
+  const before = (state.failedPairs || []).length;
+  state.failedPairs = (state.failedPairs || []).filter((k) => k !== key);
+  return state.failedPairs.length !== before;
+}
+
+function penSlotOf(pen, uidMon) {
+  if (pen.a === uidMon) return 'a';
+  if (pen.b === uidMon) return 'b';
+  return null;
+}
+
+// 培育栏里的死亡会留下遗体，占住那个位置，直到花钱处理
+function leavePenCorpse(state, mon, cause, pen, slot) {
+  const name = sp(mon.dexId).zh;
+  state.mons = state.mons.filter((m) => m.uid !== mon.uid);
+  if (pen && slot) {
+    pen[slot] = null;
+    pen[`${slot}Corpse`] = {
+      dexId: mon.dexId,
+      no: mon.no,
+      level: mon.level,
+      gender: mon.gender,
+      day: Math.floor(state.day),
+      cause,
+    };
+  }
+  state.stats.released = (state.stats.released || 0) + 1;
+  return name;
+}
+
+export function penCorpseCost(state, penIdx, slot) {
+  const pen = state.pens[penIdx];
+  const key = slot === 'b' ? 'b' : 'a';
+  return pen?.[`${key}Corpse`] ? CONFIG.penCorpseProcessCost : 0;
+}
+
+export function processPenCorpse(state, penIdx, slot) {
+  const pen = state.pens[penIdx];
+  const key = slot === 'b' ? 'b' : 'a';
+  if (!pen?.[`${key}Corpse`]) return { ok: false, msg: '这里没有遗体' };
+  const cost = CONFIG.penCorpseProcessCost;
+  if (state.gold < cost) return { ok: false, msg: `资金不足（处理遗体要 ${cost} 资金）` };
+  state.gold -= cost;
+  state.stats.spent += cost;
+  state.stats.corpseSpent = (state.stats.corpseSpent || 0) + cost;
+  pen[`${key}Corpse`] = null;
+  return { ok: true, msg: `处理掉了一具遗体（${cost} 资金）` };
+}
+
+// 培育栏状态：UI 与 tick 共用同一口径。
+// 注意：会争斗的配对一律返回 breeding，不提前泄露结果（博士只能靠试）。
+export function penStatus(state, pen) {
+  const a = monByUid(state, pen?.a);
+  const b = monByUid(state, pen?.b);
+  if (!a || !b) return { kind: 'idle' };
+  if (a.dexId !== b.dexId && failedPair(state, a.dexId, b.dexId)) {
+    return { kind: 'locked', a, b, reason: `${sp(a.dexId).zh} 与 ${sp(b.dexId).zh} 曾配对失败，不能继续同栏` };
+  }
+  const comp = compatibility(state, a, b);
+  if (comp.ok) {
+    if (state.eggs.length >= eggSlots(state)) return { kind: 'waiting-egg', a, b };
+    return { kind: 'breeding', a, b };
+  }
+  if (comp.sterile) return { kind: 'sterile', a, b, reason: comp.reason };
+  if (comp.quiet) return { kind: 'quiet', a, b, reason: comp.reason };
+  return { kind: 'breeding', a, b };
+}
+
+// 争斗文案按原因分级：让玩家能从结果里学到“为什么”
+function fightReason(a, b, comp) {
+  if (comp.code === 'same-sex') return `两只都是${a.gender === 'f' ? '雌性' : '雄性'}`;
+  if (comp.code === 'egg-group') return `${sp(a.dexId).zh} 与 ${sp(b.dexId).zh} 蛋组不合`;
+  return `${sp(a.dexId).zh} 与 ${sp(b.dexId).zh} 合不来`;
+}
+
 function resolvePen(state, pen, events, penIndex = null) {
   const a = monByUid(state, pen.a);
   const b = monByUid(state, pen.b);
   if (!a || !b) {
     pen.breed = 0;
-    return;
+    return { kind: 'none' };
   }
-  if (pen.breed < CONFIG.breedDays) return;
-
-  if (a.dexId !== b.dexId && failedPair(state, a.dexId, b.dexId)) {
-    pen.breed = 0;
-    events.push({
-      type: 'warn',
-      pen: penIndex,
-      failedPair: true,
-      msg: `${sp(a.dexId).zh} 与 ${sp(b.dexId).zh} 曾配对失败，不能继续同栏繁育`,
-    });
-    return;
-  }
+  if (pen.breed < CONFIG.breedDays) return { kind: 'waiting' };
 
   const comp = compatibility(state, a, b);
   if (comp.ok) {
     if (state.eggs.length >= eggSlots(state)) {
       // 孵化器满了，先憋着，不惩罚
       pen.breed = CONFIG.breedDays;
-      return;
+      return { kind: 'egg-full' };
     }
     const bearer = breedCostBearer(a, b);
     if (bearer.tolerance - CONFIG.breedToleranceCost <= 0) {
-      // 承担损耗的一方撑不住这次繁育：本次失败，不产蛋，随后死亡
-      const name = sp(bearer.dexId).zh;
-      releaseMon(state, bearer.uid, 'exhausted');
+      // 承担损耗的一方撑不住这次繁育：本次失败，不产蛋，力竭而死
+      const name = leavePenCorpse(state, bearer, 'exhausted', pen, penSlotOf(pen, bearer.uid));
       pen.breed = 0;
-      events.push({ type: 'warn', msg: `${name} 在繁育中耗尽了耐受度，力竭而死` });
-      return;
+      events.push({ type: 'warn', pen: penIndex, exhausted: true, msg: `${name} 在繁育中耗尽了耐受度，力竭而死` });
+      return { kind: 'exhausted' };
     }
     bearer.tolerance -= CONFIG.breedToleranceCost;
     revealEggGroups(state, a, b);
@@ -1325,36 +1418,45 @@ function resolvePen(state, pen, events, penIndex = null) {
       events.push({ type: 'egg', pen: penIndex, msg: `配种成功：孵化器中多了一枚 ${sp(dexId).zh} 的蛋` });
     }
     pen.breed = 0;
-    return;
+    return { kind: 'egg' };
   }
 
   // 不孕 / 不育：不会产蛋，但也不会因此争斗
   if (comp.sterile) {
     pen.breed = 0;
     events.push({ type: 'warn', pen: penIndex, sterile: true, msg: `${comp.reason}，本次无法繁育` });
-    return;
+    return { kind: 'sterile' };
+  }
+
+  // 注定配不成但也不该打架（双百变怪 / 未发现蛋组 / 两个无性别）
+  if (comp.quiet) {
+    pen.breed = 0;
+    events.push({ type: 'info', pen: penIndex, quiet: true, msg: comp.reason });
+    return { kind: 'quiet' };
   }
 
   // 没能配成：争斗
   const [weak, strong] = weakerOf(a, b);
   const weakName = sp(weak.dexId).zh;
   const strongName = sp(strong.dexId).zh;
-  // 只有异性且蛋组不匹配才永久锁定组合；同性、力竭等不锁定
+  const why = fightReason(a, b, comp);
+  // 只有异性且蛋组不匹配才永久锁定组合；同性、无性别等不锁定
   if (a.gender !== b.gender && comp.code === 'egg-group') lockFailedPair(state, a, b);
-  releaseMon(state, weak.uid, 'fight');
+  leavePenCorpse(state, weak, 'fight', pen, penSlotOf(pen, weak.uid));
   state.stats.fights = (state.stats.fights || 0) + 1;
   pen.breed = 0;
-  events.push({ type: 'warn', pen: penIndex, fight: true, msg: `${weakName} 与 ${strongName} 没能配成，争斗中 ${weakName} 伤重不治` });
+  events.push({ type: 'warn', pen: penIndex, fight: true, code: comp.code || 'other', msg: `${why}，争斗中 ${weakName} 伤重不治` });
   const survivor = monByUid(state, strong.uid);
   if (survivor) {
     survivor.tolerance -= CONFIG.fightToleranceLoss;
     if (survivor.tolerance <= 0) {
-      releaseMon(state, survivor.uid, 'exhausted');
-      events.push({ type: 'warn', msg: `${strongName} 也在争斗中耗尽了耐受度，伤重不治` });
+      leavePenCorpse(state, survivor, 'fight', pen, penSlotOf(pen, survivor.uid));
+      events.push({ type: 'warn', pen: penIndex, fight: true, msg: `${strongName} 也在争斗中耗尽了耐受度，伤重不治` });
     } else {
-      events.push({ type: 'warn', msg: `${strongName} 在争斗中受了伤` });
+      events.push({ type: 'warn', pen: penIndex, fight: true, msg: `${strongName} 在争斗中受了伤` });
     }
   }
+  return { kind: 'fight' };
 }
 
 // ---------- 围栏争斗 ----------
@@ -1428,12 +1530,30 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
   // 配种 / 争斗
   for (let i = 0; i < state.pens.length; i++) {
     const pen = state.pens[i];
-    const a = monByUid(state, pen.a);
-    const b = monByUid(state, pen.b);
-    if (!a || !b) {
+    const st = penStatus(state, pen);
+    if (st.kind === 'idle') {
       pen.breed = 0;
+      pen.notice = null;
       continue;
     }
+    // 注定配不成的组合：条不再空转，每个组合只提示一次
+    if (st.kind === 'locked' || st.kind === 'sterile' || st.kind === 'quiet') {
+      pen.breed = 0;
+      if (pen.notice !== st.kind) {
+        pen.notice = st.kind;
+        const quiet = st.kind === 'quiet';
+        events.push({
+          type: quiet ? 'info' : 'warn',
+          pen: i,
+          ...(st.kind === 'locked' ? { failedPair: true } : {}),
+          ...(st.kind === 'sterile' ? { sterile: true } : {}),
+          ...(quiet ? { quiet: true } : {}),
+          msg: quiet ? st.reason : `${st.reason}，本次无法繁育`,
+        });
+      }
+      continue;
+    }
+    pen.notice = null;
     pen.breed += dtDays;
     resolvePen(state, pen, events, i);
   }
@@ -1473,7 +1593,7 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
     if (weakest.tolerance <= 0) bullyDeaths.add(weakest.uid);
   }
 
-  // 耐受度见底：实验室留下遗体占位，霸凌致死留围栏遗体，其他位置离队
+  // 耐受度见底：实验室留下遗体占位，霸凌致死留围栏遗体，培育栏也留遗体，其他位置离队
   for (const mon of [...state.mons]) {
     if (mon.tolerance <= 0) {
       const name = sp(mon.dexId).zh;
@@ -1483,17 +1603,23 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
         continue;
       }
       const inLab = labContains(state, mon.uid);
-      const inPen = penIndex(state, mon.uid) !== -1;
+      const penIdx = penIndex(state, mon.uid);
+      const inPen = penIdx !== -1;
       if (inLab) {
         logLabDeath(state, mon, 'struggle');
         leaveLabCorpse(state, mon, 'struggle');
-      } else releaseMon(state, mon.uid, 'exhausted');
+      } else if (inPen) {
+        const pen = state.pens[penIdx];
+        leavePenCorpse(state, mon, 'exhausted', pen, penSlotOf(pen, mon.uid));
+      } else {
+        releaseMon(state, mon.uid, 'exhausted');
+      }
       const msg = inLab
         ? `${name} 在实验台上挣扎到最后一刻，倒了下去`
         : inPen
           ? `${name} 在培育栏里耗尽了耐受度，倒下了`
           : `${name} 在围栏里耗尽了耐受度，没能撑过去`;
-      events.push({ type: 'warn', msg });
+      events.push({ type: 'warn', ...(inPen ? { pen: penIdx } : {}), msg });
     }
   }
 

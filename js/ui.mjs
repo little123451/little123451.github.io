@@ -157,7 +157,8 @@ export function pushLog(msg, type = 'info') {
 }
 
 export function handleEvents(events) {
-  let important = 0;
+  const warned = [];
+  const rest = [];
   for (const e of events) {
     if (e.type === 'level' || e.type === 'expire') continue;
     pushLog(e.msg, e.type);
@@ -166,12 +167,17 @@ export function handleEvents(events) {
       openModal('win');
       continue;
     }
-    if ((e.type === 'evolve' || e.type === 'egg' || e.type === 'warn' || e.type === 'research') && important < 2) {
-      toast(e.msg, e.type === 'warn' ? 'bad' : 'good');
-      important++;
-    }
     if (e.type === 'egg' && Number.isInteger(e.pen)) playPenLove(e.pen);
-    if (e.fight && Number.isInteger(e.pen)) playPenClash(e.pen);
+    if ((e.fight || e.exhausted) && Number.isInteger(e.pen)) playPenClash(e.pen);
+    (e.type === 'warn' ? warned : rest).push(e);
+  }
+  // 坏消息优先占 toast 名额：同一 tick 里可能同时产蛋、孵化、死人
+  let important = 0;
+  for (const e of [...warned, ...rest]) {
+    if (important >= 2) break;
+    if (e.type !== 'warn' && e.type !== 'evolve' && e.type !== 'egg' && e.type !== 'research') continue;
+    toast(e.msg, e.type === 'warn' ? 'bad' : 'good');
+    important++;
   }
 }
 
@@ -282,6 +288,19 @@ function handleAction(act, d) {
       const r = L.removeFromPen(S, d.uid);
       toast(r.msg, r.ok ? 'good' : 'bad');
       if (r.ok) closeModal();
+      render();
+      break;
+    }
+    case 'process-pen-corpse': {
+      const r = L.processPenCorpse(S, Number(d.pen), d.slot);
+      toast(r.msg, r.ok ? 'good' : 'bad');
+      render();
+      break;
+    }
+    case 'forget-failed-pair': {
+      const ok = L.forgetFailedPair(S, Number(d.a), Number(d.b));
+      toast(ok ? '那次失败已经被忘了' : '没有可解除的记录', ok ? 'good' : 'bad');
+      if (ok && d.pen != null) openModal('picker', { pen: Number(d.pen), slot: d.slot });
       render();
       break;
     }
@@ -526,14 +545,23 @@ function statRowHtml(key, value, unlocked) {
 // ---------- 培育栏 ----------
 function pensSignature() {
   const key = (m) => (m ? `${m.uid}:${m.dexId}:${knownKey(m.dexId)}` : '-');
+  const corpseKey = (c) => (c ? `c${c.dexId}:${c.no ?? ''}` : '-');
   const fails = (S.failedPairs || []).join(',');
-  return S.pens.map((p) => `${key(L.monByUid(S, p.a))}|${key(L.monByUid(S, p.b))}`).join(';') + '|' + fails;
+  return (
+    S.pens
+      .map((p) => `${key(L.monByUid(S, p.a))}|${key(L.monByUid(S, p.b))}|${corpseKey(p.aCorpse)}|${corpseKey(p.bCorpse)}`)
+      .join(';') + '|' + fails
+  );
 }
 
 function ensurePens() {
   const s = pensSignature();
   if (s === sig.pens) return;
   sig.pens = s;
+  const slotHtml = (mon, corpse, pen, slot) => {
+    if (corpse) return corpseSlotHtml(corpse, pen, slot);
+    return mon ? monSlotHtml(mon, pen, slot) : emptySlotHtml(pen, slot);
+  };
   $('#pens').innerHTML = S.pens
     .map((pen, i) => {
       const a = L.monByUid(S, pen.a);
@@ -541,8 +569,8 @@ function ensurePens() {
       return `<div class="pen" id="pen-${i}">
         <div class="pen-head"><span>栏位 ${i + 1}</span></div>
         <div class="slots">
-          ${a ? monSlotHtml(a, i, 'a') : emptySlotHtml(i, 'a')}
-          ${b ? monSlotHtml(b, i, 'b') : emptySlotHtml(i, 'b')}
+          ${slotHtml(a, pen.aCorpse, i, 'a')}
+          ${slotHtml(b, pen.bCorpse, i, 'b')}
         </div>
         <div class="pen-warn hidden" id="pen-${i}-warn"></div>
         <div class="breed" id="pen-${i}-breed" style="display:none">
@@ -553,6 +581,18 @@ function ensurePens() {
       </div>`;
     })
     .join('');
+}
+
+// 培育栏里的遗体：占住这个位置，处理掉才能放新的
+function corpseSlotHtml(corpse, pen, slot) {
+  const s = sp(corpse.dexId);
+  const cost = CONFIG.penCorpseProcessCost;
+  return `<div class="slot dead" id="pen-${pen}-${slot}">
+    <div class="corpse-mark">💀</div>
+    <div class="nm">${s.zh} 的遗体</div>
+    <div class="sub">Lv.${corpse.level} ${L.genderZh(corpse.gender)}</div>
+    <button class="mini" data-act="process-pen-corpse" data-pen="${pen}" data-slot="${slot}">处理 🪙 ${cost}</button>
+  </div>`;
 }
 
 function monSlotHtml(mon, pen, slot) {
@@ -580,29 +620,47 @@ function patchPens() {
     patchSlot(a, i, 'a');
     patchSlot(b, i, 'b');
 
-    // 两只都在就会积累繁育条；成败要等条满才知道
-    const both = !!(a && b);
+    // 状态口径统一走 logic：只有「注定配不成」的情况才会提前说明；
+    // 会争斗的配对一律显示为正常积累——博士只能靠试。
+    const st = a && b ? L.penStatus(S, pen) : { kind: 'idle' };
+
     const warn = el(`pen-${i}-warn`);
     if (warn) {
-      const comp = both ? L.compatibility(S, a, b) : null;
-      const failed = both && L.failedPair(S, a.dexId, b.dexId);
-      if (comp?.sterile) {
-        setText(warn, comp.reason);
-        warn.classList.remove('hidden');
-      } else if (failed) {
-        setText(warn, `${sp(a.dexId).zh} 与 ${sp(b.dexId).zh} 曾配对失败，不能继续同栏`);
-        warn.classList.remove('hidden');
-      } else {
-        warn.classList.add('hidden');
+      let text = '';
+      let action = null;
+      if (st.kind === 'waiting-egg') {
+        text = '孵化器已满，繁育暂停';
+      } else if (st.kind === 'locked') {
+        text = st.reason;
+        action = { a: a.dexId, b: b.dexId };
+      } else if (st.kind === 'sterile' || st.kind === 'quiet') {
+        text = st.reason;
       }
+      const key = `${st.kind}|${text}|${action ? `${action.a}-${action.b}` : ''}`;
+      if (warn.dataset.key !== key) {
+        warn.dataset.key = key;
+        if (action) {
+          warn.innerHTML = `${text} <button class="mini" data-act="forget-failed-pair" data-a="${action.a}" data-b="${action.b}">解除记忆</button>`;
+        } else {
+          warn.textContent = text;
+        }
+      }
+      warn.classList.toggle('hidden', !text);
     }
+
     const breed = el(`pen-${i}-breed`);
     if (breed) {
-      breed.style.display = both ? 'flex' : 'none';
-      if (both) {
-        const p = pct(pen.breed, CONFIG.breedDays);
+      const running = st.kind === 'breeding' || st.kind === 'waiting-egg';
+      const paused = st.kind === 'locked' || st.kind === 'sterile' || st.kind === 'quiet';
+      breed.style.display = running || paused ? 'flex' : 'none';
+      breed.classList.toggle('paused', paused);
+      if (running) {
+        const p = st.kind === 'waiting-egg' ? 100 : pct(pen.breed, CONFIG.breedDays);
         setWidth(el(`pen-${i}-breedbar`), p);
         setText(el(`pen-${i}-breedpct`), `${p.toFixed(0)}%`);
+      } else if (paused) {
+        setWidth(el(`pen-${i}-breedbar`), 0);
+        setText(el(`pen-${i}-breedpct`), '0%');
       }
     }
   });
@@ -670,7 +728,8 @@ function ensureEggs() {
 }
 
 function patchEggs() {
-  $('#egg-hint').textContent = `${S.eggs.length}/${L.eggSlots(S)} 枚蛋`;
+  const full = S.eggs.length >= L.eggSlots(S);
+  $('#egg-hint').textContent = `${S.eggs.length}/${L.eggSlots(S)} 枚蛋${full ? ' · 已满，繁育会暂停' : ''}`;
   for (const egg of S.eggs) {
     setText(el(`egg-${egg.uid}-left`), `孵化中 · ${Math.max(0, egg.daysLeft).toFixed(1)} 天`);
     setWidth(el(`egg-${egg.uid}-bar`), pct(egg.total - egg.daysLeft, egg.total));
@@ -1183,7 +1242,8 @@ function patchShop() {
   if (b5) b5.disabled = S.gold < S.candyPrice * 5;
   S.market.forEach((offer, idx) => {
     const btn = el(`buy-egg-${idx}`);
-    if (btn) btn.disabled = S.gold < offer.price;
+    // 蛋位满了买回去也没处放，直接禁用
+    if (btn) btn.disabled = S.gold < offer.price || S.eggs.length >= L.eggSlots(S);
   });
   const reroll = el('reroll-market');
   if (reroll) {
@@ -1480,12 +1540,17 @@ function pickerModalHtml(penIdx, slot) {
       const s = sp(m.dexId);
       const isBlocked = !!other && m.dexId !== other.dexId && blocked.has(m.dexId);
       const reason = isBlocked ? `曾与${sp(other.dexId).zh}配对失败，不可用` : null;
-      return `<button class="pick${isBlocked ? ' blocked' : ''}${researchedCls(m)}" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}" ${isBlocked ? 'disabled' : ''}${reason ? ` title="${reason}"` : ''}>
+      const card = `<button class="pick${isBlocked ? ' blocked' : ''}${researchedCls(m)}" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}" ${isBlocked ? 'disabled' : ''}${reason ? ` title="${reason}"` : ''}>
         ${monNoTag(m)}
         <img src="${sprite(m.dexId)}"${imgFallback(m.dexId)}${spriteFilter(m)} alt="" />
         <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}</span>
         <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)} · ${reason || '空闲'}${L.sterilityLabel(m) ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
+      if (!isBlocked) return card;
+      // 失败记忆是免费的：知道得更多了就该有一次重试的机会
+      return `<div class="pick-row">${card}
+        <button class="mini" data-act="forget-failed-pair" data-a="${other.dexId}" data-b="${m.dexId}" data-pen="${penIdx}" data-slot="${slot}">解除记忆</button>
+      </div>`;
     })
     .join('');
   return modalShell(
@@ -1777,12 +1842,12 @@ function helpModalHtml() {
     `<div class="help">
       <p>你是年轻的大木博士，被“请”进火箭队的地下基地：替他们管理与运营抢来的宝可梦，同时偷偷记录每一只的数据，为日后那本研究笔记写下第一手说明。</p>
       <ul>
-        <li><b>繁育</b>：栏位里放两只就会积累繁育条。条满时如果条件正常（一雄一雌、蛋组交叠）就会产蛋，母体因此损耗耐受度（低等级母体大约撑 3 只后代，等级越高越耐用）；没有雌性时由<b>百变怪</b>承担损耗，雄性不掉耐受度。条件不正常，两只就会争斗——<b>较弱的那只阵亡</b>，另一只受伤。新个体有 <b>1/4096</b> 概率闪光，<b>2/4096</b> 概率不孕（♀）/不育（♂）；不孕不育无法配种，但不会因此争斗。只有异性且蛋组不匹配导致的配对失败会永久锁定物种组合；同性争斗、力竭等其他失败不记录，也不锁定。</li>
+        <li><b>繁育</b>：栏位里放两只就会积累繁育条。条满时如果条件正常（一雄一雌、蛋组交叠）就会产蛋，母体因此损耗耐受度（低等级母体大约撑 3 只后代，等级越高越耐用）；没有雌性时由<b>百变怪</b>承担损耗，雄性不掉耐受度。条件不正常，两只就会争斗——<b>较弱的那只阵亡</b>，另一只受伤；只有同性、蛋组不匹配会真的打起来，文案会点明原因。<b>两只百变怪</b>与<b>未发现蛋组的物种</b>放不进同一栏；<b>无性别</b>的宝可梦不会跟任何配对打起来，只会静默地配不上。争斗与力竭死亡会在培育栏留下<b>遗体</b>，要花金币处理才能放新的。新个体有 <b>1/4096</b> 概率闪光，<b>2/4096</b> 概率不孕（♀）/不育（♂）；不孕不育无法配种，但不会因此争斗。只有异性且蛋组不匹配导致的配对失败会锁定物种组合，可以在选择列表里<b>免费解除</b>；同性争斗、力竭等其他失败不记录，也不锁定。</li>
         <li><b>蛋组</b>：博士一开始并不知道任何宝可梦的蛋组，界面上只显示 ???。只有亲手繁育出蛋，才会确认两边交汇的那个蛋组。</li>
-        <li><b>孵化</b>：蛋在孵化器中倒计时，孵出的永远是该家族的<b>最初形态</b>；孵化步数越高越慢，升级孵化器可加速并增加蛋位。孵出后默认进<b>围栏</b>，要自己放进培育栏。</li>
+        <li><b>孵化</b>：蛋在孵化器中倒计时，孵出的永远是该家族的<b>最初形态</b>；孵化步数越高越慢，升级孵化器可加速并增加蛋位。孵出后默认进<b>围栏</b>，要自己放进培育栏。蛋位满了繁育会暂停，培育栏会提示原因。</li>
         <li><b>养成</b>：栏位中的宝可梦会持续获得经验，喂<b>经验糖果</b>可加速成长；不在栏位也不在实验室的会待在<b>围栏</b>里。围栏超过 5 只时可按属性/性格筛选。围栏里同种同性达到 4 只后，最弱的那只会被持续霸凌、耐受度下降；移走一只即可停止。霸凌致死会留下遗体，需要花金币处理。</li>
         <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的研究笔记条目，<b>没有免费的实验</b>。每种实验都有冷却，越深入的实验冷却越久（最长 30 秒）；该物种研究完成后冷却取消。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽死亡，或花金币处理；死亡的实验对象会留下遗体，同样占用实验台，必须付费处理才能空出；实验具体影响不会事先显示。已执行过的行为会标“已记录”。每次实验会先播放加载条，再展示实验结果与实验日志；手动处理活体会记入日志和损耗，研究满 100% 后不再记录；死亡后的遗体处理不重复记录。</li>
-        <li><b>耐受度</b>：上限随等级提高（Lv.1 为 100，每级 +2），<b>雄性再乘 1.25</b>；出厂即满，但只有进了实验室才能在界面上看到。繁育、争斗、霸凌、实验都会消耗它，归零即死亡：实验室个体留下遗体占位，围栏里被霸凌致死的个体留下遗体等待处理，其他情况离队。物种研究完成后，只剩最伤身的那种实验还能用。</li>
+        <li><b>耐受度</b>：上限随等级提高（Lv.1 为 100，每级 +2），<b>雄性再乘 1.25</b>；出厂即满，但只有进了实验室才能在界面上看到。繁育、争斗、霸凌、实验都会消耗它，归零即死亡：实验室个体留下遗体占位，围栏里被霸凌致死的个体留下遗体等待处理，培育栏里死亡的个体也会留下遗体（需付费处理），其他情况离队。物种研究完成后，只剩最伤身的那种实验还能用。</li>
         <li><b>能力值</b>：刚接触的物种看不全能力值。随着该物种的研究进度，能力项会按种族值从高到低逐项披露。</li>
         <li><b>研究笔记</b>：研究过的物种会显示灰度图标和进度，100% 完成后才变成彩色；已完成条目会记录完成日期与损耗掉的个体数，物种详情和研究笔记页还会显示最近的实验日志（含处理记录）。</li>
         <li><b>进化</b>：升级自动进化；石之进化与通信进化需要在详情页手动触发（消耗道具）。</li>

@@ -20,8 +20,8 @@ async function boot() {
   initExperiments(await expRes.json());
   initBaseResults(await resultRes.json());
 
-  // 读档：save.mjs 负责当前/旧存档 key 与迁移标记
-  let loaded = { raw: null, migrated: false, error: null };
+  // 读档：只认当前版本，旧版本存档 deserialize 直接返回 null（重新开档）
+  let loaded = { raw: null, error: null };
   try {
     loaded = loadRaw(localStorage);
   } catch (err) {
@@ -29,15 +29,13 @@ async function boot() {
   }
   if (loaded.error) console.warn('localStorage 不可用', loaded.error);
 
-  let migrated = loaded.migrated;
   let state = deserialize(loaded.raw);
   const fresh = !state;
   if (!state) state = L.newGame();
 
   const save = (silent = false) => {
     try {
-      persist(localStorage, state, migrated);
-      migrated = false;
+      persist(localStorage, state);
       if (!silent) UI.toast('进度已保存', 'good');
       return true;
     } catch (err) {
@@ -53,7 +51,6 @@ async function boot() {
       try {
         clearSave(localStorage);
       } catch {}
-      migrated = false;
       state = L.newGame();
       UI.setState(state);
       save(true);
