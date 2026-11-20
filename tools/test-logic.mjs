@@ -22,7 +22,7 @@ const check = (cond, label, extra = '') => {
 };
 
 const state = L.newGame(12345);
-check(state.mons.length === 2, '初始 2 只宝可梦');
+check(state.mons.length === 3, '初始 3 只宝可梦');
 check(state.orders.length === 2, '初始订单');
 check(state.market.length === 3, '初始蛋市场');
 check(state.candies === CONFIG.startCandies, '初始经验糖果', `(${state.candies})`);
@@ -883,6 +883,95 @@ for (let i = 0; i < 40 && !kinData.eggs.length; i++) L.tick(kinData, 0.25);
 const kinEgg2 = kinData.eggs[0];
 check(kinEgg2?.gen === 2, '第二代蛋的世代为 2', `(${kinEgg2?.gen})`);
 check(kinEgg2?.ancestors?.includes(kDad.uid), '祖先并集保留更早的辈分');
+
+// ---------- 近亲 / 体质 / 死胎 ----------
+const vig = L.newGame(4302);
+const vDadM = L.createMon(vig, 16, CONFIG.maxLevel, { gender: 'm' });
+const vMomF = L.createMon(vig, 21, CONFIG.maxLevel, { gender: 'f' });
+check(vDadM.vigor === 1 && vMomF.vigor === 1, '外血个体体质为 1');
+check(vDadM.inbred === false, '外血个体不带近亲标记');
+check(!L.isKin(vDadM, vMomF), '无共同祖先不算近亲');
+
+// childVigor：近亲衰减 / 下限 / 非近亲回升
+check(L.childVigor({ vigor: 1 }, { vigor: 1 }, true) === 0.85, '近亲子代体质 ×0.85');
+check(L.childVigor({ vigor: 0.72 }, { vigor: 1 }, true) === 0.612, '第二代近亲继续衰减', `(${L.childVigor({ vigor: 0.72 }, { vigor: 1 }, true)})`);
+check(L.childVigor({ vigor: 0.5 }, { vigor: 1 }, true) === 0.5, '近亲子代体质触底 0.5');
+check(L.childVigor({ vigor: 1 }, { vigor: 1 }, false) === 1, '非近亲子代封顶 1');
+check(L.childVigor({ vigor: 0.5 }, { vigor: 0.5 }, false) === 0.7, '两条退化线互配 = 均值 +0.2', `(${L.childVigor({ vigor: 0.5 }, { vigor: 0.5 }, false)})`);
+check(L.childVigor({ vigor: 0.61 }, { vigor: 1 }, false) === 1, '外血能把退化品系拉回 1');
+
+// 体质系数乘在耐受上限上
+const vgTolState = L.newGame(4308);
+const vgFullMon = L.createMon(vgTolState, 21, 30, { gender: 'f' });
+const vgHalfMon = L.createMon(vgTolState, 21, 30, { gender: 'f', vigor: 0.5 });
+check(maxTolerance(vgHalfMon) === Math.max(1, Math.round(maxTolerance(vgFullMon) * 0.5)), '体质系数乘在耐受上限上', `(${maxTolerance(vgFullMon)}→${maxTolerance(vgHalfMon)})`);
+
+// isKin：亲子 / 共同祖先 / 无交集
+check(L.isKin({ uid: 'k1', ancestors: [] }, { uid: 'k2', ancestors: ['k1'] }), '亲子算近亲');
+check(L.isKin({ uid: 'k3', ancestors: ['k9'] }, { uid: 'k4', ancestors: ['k9'] }), '共享祖先算近亲');
+check(!L.isKin({ uid: 'k5', ancestors: ['k7'] }, { uid: 'k6', ancestors: ['k8'] }), '无共享祖先不算近亲');
+
+// 祖先表不再截断：母体祖先很多时，父本也不会被挤出
+const ancState = L.newGame(4304);
+const ancDad = L.createMon(ancState, 16, CONFIG.maxLevel, { gender: 'm' });
+const ancMom = L.createMon(ancState, 21, CONFIG.maxLevel, { gender: 'f' });
+ancMom.ancestors = Array.from({ length: 10 }, (_, i) => `x${i}`);
+ancState.mons = [ancDad, ancMom];
+ancState.pens = [{ a: ancDad.uid, b: ancMom.uid, breed: 0 }];
+ancState.eggs = [];
+for (let i = 0; i < 40 && !ancState.eggs.length; i++) L.tick(ancState, 0.25);
+const ancEgg = ancState.eggs[0];
+check(ancEgg?.ancestors?.includes(ancDad.uid), '祖先表不截断：父本仍在表内');
+check(ancEgg?.ancestors?.length === 12, '祖先表 = 父本 + 母本 + 10 条祖辈', `(${ancEgg?.ancestors?.length})`);
+
+// 力竭：先产下最后一胎，再死
+const exh = L.newGame(4305);
+const exhDad = L.createMon(exh, 16, CONFIG.maxLevel, { gender: 'm' });
+const exhMom = L.createMon(exh, 21, CONFIG.maxLevel, { gender: 'f' });
+exhMom.tolerance = 10; // 连一发都不够
+exh.mons = [exhDad, exhMom];
+exh.pens = [{ a: exhDad.uid, b: exhMom.uid, breed: 0 }];
+exh.eggs = [];
+for (let i = 0; i < 40 && !exh.eggs.length; i++) L.tick(exh, 0.25);
+check(exh.eggs.length === 1, '母体撑不住也会先产下最后一胎');
+check(L.monByUid(exh, exhMom.uid) === null, '产完最后一胎后力竭而死');
+
+// 死胎：体质 1.0 永不发生；体质 0.5 会出现
+const runCycles = (vigor) => {
+  const st = L.newGame(4306);
+  const dad = L.createMon(st, 16, CONFIG.maxLevel, { gender: 'm' });
+  const mom = L.createMon(st, 21, CONFIG.maxLevel, { gender: 'f' });
+  mom.vigor = vigor;
+  mom.tolerance = 1e6;
+  st.mons = [dad, mom];
+  st.pens = [{ a: dad.uid, b: mom.uid, breed: 0 }];
+  st.eggs = [];
+  let stillbirths = 0;
+  let sawMsg = false;
+  for (let i = 0; i < 120; i++) {
+    const evs = L.tick(st, CONFIG.breedDays);
+    const sb = evs.find((e) => e.stillbirth);
+    if (sb) {
+      stillbirths++;
+      if (sb.msg === '这一胎没有成型。母体照样耗掉了这一次。') sawMsg = true;
+    }
+    st.eggs = [];
+  }
+  return { stillbirths, sawMsg };
+};
+const sbHealthy = runCycles(1);
+check(sbHealthy.stillbirths === 0, '体质 1.0 时不会死胎', `(${sbHealthy.stillbirths})`);
+const sbWeak = runCycles(0.5);
+check(sbWeak.stillbirths > 0, '体质 0.5 时会出现死胎', `(${sbWeak.stillbirths})`);
+check(sbWeak.sawMsg, '死胎文案正确');
+
+// 开局 3 只：一雄两雌，两只雌性同物种且彼此无亲缘
+const start3 = L.newGame(4307);
+check(start3.mons.length === 3, '开局 3 只');
+const start3F = start3.mons.filter((m) => m.dexId === 21 && m.gender === 'f');
+check(start3F.length === 2, '开局有两只同物种雌性');
+check(!L.isKin(start3F[0], start3F[1]), '两只开局雌性彼此无亲缘');
+check(start3.pens[0].a && start3.pens[0].b, '开局第一栏位已有配对');
 
 // ---------- 培育栏 → 实验室 ----------
 const mvState = L.newGame(4301);

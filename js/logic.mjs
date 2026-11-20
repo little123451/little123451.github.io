@@ -289,6 +289,8 @@ export function createMon(state, dexId, level = 1, opts = {}) {
   const ability = opts.ability ?? pickOne(state, s.abilities);
   const shiny = opts.shiny ?? random(state) < CONFIG.shinyChance;
   const sterile = opts.sterile ?? (gender !== 'x' && random(state) < CONFIG.sterileChance);
+  // 体质系数：外血 / 正常 = 1；近亲后代逐代 ×0.85，下限 0.5
+  const vigor = opts.vigor ?? 1;
   return {
     uid: uid(state),
     no: null,
@@ -301,8 +303,12 @@ export function createMon(state, dexId, level = 1, opts = {}) {
     shiny,
     sterile,
     ivs,
+    // 体质系数：乘在耐受上限上，不单独显示
+    vigor,
+    // 近亲后代标记（出生时写入，用于详情页的“近亲后代 · 第 N 代”）
+    inbred: !!opts.inbred,
     // 出厂即满值；雄性上限是同物种、同等级雌性的 1.25 倍
-    tolerance: toleranceCap(level, gender),
+    tolerance: Math.max(1, Math.round(toleranceCap(level, gender) * vigor)),
     // 血统：祖先 uid 与代数（市场买来的蛋 / 初始个体都为空）
     ancestors: opts.ancestors ? [...opts.ancestors] : [],
     gen: opts.gen ?? 0,
@@ -351,6 +357,8 @@ export function newGame(seed = (Date.now() % 2147483647) || 7) {  const state = 
     dex: [],
     // 蛋组知识：{ 物种id: ['已确认的蛋组'] }
     eggKnown: {},
+    // 曾经孵出过的物种（孵化反馈分级用）：{ 物种id: 次数 }
+    everHatched: {},
     // 已完成研究笔记的研究记录：{ 物种id: { day, experiments } }
     dexRecords: {},
     // 各物种累计使用过的研究行为
@@ -383,13 +391,17 @@ export function newGame(seed = (Date.now() % 2147483647) || 7) {  const state = 
     quitDay: null,
   };
 
+  // 开局三只：一只波波（父本）+ 两只烈雀（母体，彼此无亲缘）。
+  // 两只母体必须同物种——异种双雌不会降低断线风险。
   const male = createMon(state, 16, 5, { gender: 'm', origin: 'starter', source: '野外捕获' });
-  const female = createMon(state, 21, 5, { gender: 'f', origin: 'starter', source: '野外捕获' });
-  state.mons.push(male, female);
+  const femaleA = createMon(state, 21, 5, { gender: 'f', origin: 'starter', source: '野外捕获' });
+  const femaleB = createMon(state, 21, 5, { gender: 'f', origin: 'starter', source: '野外捕获' });
+  state.mons.push(male, femaleA, femaleB);
   state.pens[0].a = male.uid;
-  state.pens[0].b = female.uid;
+  state.pens[0].b = femaleA.uid;
+  // 第三只在围栏里待命，进栏位时才分配编号
   allocateMonNo(state, male);
-  allocateMonNo(state, female);
+  allocateMonNo(state, femaleA);
   refreshMarket(state);
   while (state.orders.length < orderSlots(state)) state.orders.push(makeOrder(state));
   return state;
@@ -554,7 +566,7 @@ export function compatibility(a, b) {
     if (a.gender === b.gender) return { ok: false, code: 'same-sex', reason: '需要一雄一雌' };
     if (!groupsA.some((g) => groupsB.includes(g))) return { ok: false, reason: '蛋组不匹配', code: 'egg-group' };
   }
-  return { ok: true, reason: '可以配种' };
+  return { ok: true, kin: isKin(a, b), reason: '可以配种' };
 }
 
 // ---------- 蛋组知识 ----------
@@ -590,6 +602,15 @@ export function eggGroupsDisplay(state, dexId) {
   if (!groups.length) return '—';
   const known = knownEggGroups(state, dexId);
   return groups.map((g) => (known.includes(g) ? eggZh(g) : '？？？')).join(' / ');
+}
+
+// 界面用：两个物种是否存在“已识别”的共同蛋组。
+// 只读 state.eggKnown，绝不揭示未知蛋组——它是记忆辅助，不是剧透。
+export function sharesKnownEggGroup(state, aDexId, bDexId) {
+  const A = knownEggGroups(state, aDexId);
+  const B = knownEggGroups(state, bDexId);
+  if (!A.length || !B.length) return false;
+  return A.some((g) => B.includes(g));
 }
 
 // 蛋永远孵出最初形态：沿 evolvesFrom 链回溯到根
@@ -643,8 +664,16 @@ export function hatchDays(state, dexId) {
   return Math.max(1, +(base * (1 - 0.1 * state.upgrades.incubator)).toFixed(2));
 }
 
-// 血统：记录祖先 uid（上限 8 个，覆盖到曾祖辈）与代数。
-// 目前只写不读——等近亲机制上线后由 isKin() 使用（方案见 docs/kin-penalty.md）。
+// 死胎概率：跟着体质系数走。体质 ≥0.85 时完全不会发生——启动期天然免疫。
+function stillbirthChance(vigor) {
+  if (vigor >= 0.85) return 0;
+  if (vigor >= 0.72) return 0.02;
+  if (vigor >= 0.61) return 0.04;
+  return 0.06;
+}
+
+// 血统：记录祖先 uid 与代数。
+// 不做条数截断——截断会把母本挤出祖先表，连亲子都判不出来。
 function lineageOf(parents) {
   if (!parents?.length) return { ancestors: [], gen: 0 };
   const set = new Set();
@@ -655,12 +684,35 @@ function lineageOf(parents) {
     for (const a of p.ancestors || []) set.add(a);
     gen = Math.max(gen, p.gen ?? 0);
   }
-  return { ancestors: [...set].slice(0, 8), gen: gen + 1 };
+  return { ancestors: [...set], gen: gen + 1 };
+}
+
+// 近亲：亲子（一方是另一方的祖先）或共享任意祖先。不分远近，只有“是/不是”。
+export function isKin(a, b) {
+  if (!a || !b) return false;
+  const A = new Set(a.ancestors || []);
+  const B = new Set(b.ancestors || []);
+  if (A.has(b.uid) || B.has(a.uid)) return true;
+  for (const u of B) if (A.has(u)) return true;
+  return false;
+}
+
+// 子代体质：近亲 = min(双亲) × 0.85（下限 0.5）；非近亲 = 均值 + 0.2 杂种优势（封顶 1）
+export function childVigor(a, b, kin) {
+  const va = a?.vigor ?? 1;
+  const vb = b?.vigor ?? 1;
+  const raw = kin
+    ? Math.min(va, vb) * CONFIG.kinVigorFactor
+    : (va + vb) / 2 + CONFIG.hybridVigorBonus;
+  const floor = CONFIG.vigorFloor;
+  return Math.round(Math.min(1, Math.max(floor, raw)) * 1000) / 1000;
 }
 
 function createEgg(state, dexId, parents, source = BRED_SOURCE) {
   if (state.eggs.length >= eggSlots(state)) return null;
   const s = sp(dexId);
+  const kin = parents ? isKin(parents[0], parents[1]) : false;
+  const vigor = parents ? childVigor(parents[0], parents[1], kin) : 1;
   const ivs = {};
   for (const k of STAT_KEYS) {
     const base = parents ? (parents[0].ivs[k] + parents[1].ivs[k]) / 2 : 15;
@@ -679,6 +731,9 @@ function createEgg(state, dexId, parents, source = BRED_SOURCE) {
     ability: pickOne(state, s.abilities),
     // 血统跟着蛋 → 个体走完整个生命周期
     ...lineageOf(parents),
+    // 体质系数与“近亲后代”标记，同样跟着蛋 → 个体
+    vigor,
+    inbred: kin,
     // 来源跟着蛋进来，孵出后继续跟着个体
     source: source || BRED_SOURCE,
   };
@@ -696,6 +751,8 @@ function hatch(state, egg, events) {
     ability: egg.ability,
     ancestors: egg.ancestors,
     gen: egg.gen,
+    vigor: egg.vigor ?? 1,
+    inbred: !!egg.inbred,
     origin: 'egg',
     source: egg.source,
   });
@@ -704,7 +761,17 @@ function hatch(state, egg, events) {
   // 孵出后默认留在围栏（闲置区），不自动塞进培育栏
   state.stats.hatched += 1;
   state.eggs = state.eggs.filter((e) => e.uid !== egg.uid);
-  events.push({ type: 'egg', msg: `蛋孵化了：${s.zh}！（已在围栏）` });
+
+  // 普通孵化只进日志；首次孵出该物种 / 虚弱 / 不孕 / 闪光才值得弹一次
+  if (!state.everHatched) state.everHatched = {};
+  const first = !state.everHatched[dexId];
+  state.everHatched[dexId] = (state.everHatched[dexId] || 0) + 1;
+  const weak = (mon.vigor ?? 1) < 0.85;
+  const special = first || weak || !!mon.sterile || !!mon.shiny;
+  const msg = weak
+    ? `蛋孵化了：${s.zh}。它比同窝的弱得多。（已在围栏）`
+    : `蛋孵化了：${s.zh}！（已在围栏）`;
+  events.push({ type: 'egg', special, msg });
   return mon;
 }
 
@@ -1460,13 +1527,21 @@ function resolvePen(state, pen, events, penIdx = null) {
       return { kind: 'egg-full' };
     }
     const bearer = breedCostBearer(a, b);
-    if (bearer.tolerance - CONFIG.breedToleranceCost <= 0) {
-      // 承担损耗的一方撑不住这次繁育：本次失败，不产蛋，力竭而死
-      const name = leavePenCorpse(state, bearer, 'exhausted', pen, penSlotOf(pen, bearer.uid));
+
+    // 死胎：体质越差越容易。照常扣耐受、不产蛋——母体照样付了这一胎的代价。
+    if (random(state) < stillbirthChance(bearer.vigor ?? 1)) {
+      bearer.tolerance -= CONFIG.breedToleranceCost;
       pen.breed = 0;
-      events.push({ type: 'warn', pen: penIdx, exhausted: true, msg: `${name} 在繁育中耗尽了耐受度，力竭而死` });
-      return { kind: 'exhausted' };
+      events.push({ type: 'warn', pen: penIdx, stillbirth: true, msg: '这一胎没有成型。母体照样耗掉了这一次。' });
+      if (bearer.tolerance <= 0) {
+        const name = leavePenCorpse(state, bearer, 'exhausted', pen, penSlotOf(pen, bearer.uid));
+        events.push({ type: 'warn', pen: penIdx, exhausted: true, msg: `${name} 在繁育中耗尽了耐受度，力竭而死` });
+        return { kind: 'exhausted' };
+      }
+      return { kind: 'stillbirth' };
     }
+
+    // 先产下这一胎，再判力竭——母体的最后一胎不会被吞掉
     bearer.tolerance -= CONFIG.breedToleranceCost;
     revealEggGroups(state, a, b);
     const dexId = childSpecies(a, b);
@@ -1476,6 +1551,10 @@ function resolvePen(state, pen, events, penIdx = null) {
       events.push({ type: 'egg', pen: penIdx, msg: `配种成功：孵化器中多了一枚 ${sp(dexId).zh} 的蛋` });
     }
     pen.breed = 0;
+    if (bearer.tolerance <= 0) {
+      const name = leavePenCorpse(state, bearer, 'exhausted', pen, penSlotOf(pen, bearer.uid));
+      events.push({ type: 'warn', pen: penIdx, exhausted: true, msg: `${name} 在繁育中耗尽了耐受度，力竭而死` });
+    }
     return { kind: 'egg' };
   }
 

@@ -193,6 +193,9 @@ export function handleEvents(events) {
   for (const e of [...warned, ...rest]) {
     if (important >= 2) break;
     if (e.type !== 'warn' && e.type !== 'evolve' && e.type !== 'egg' && e.type !== 'research') continue;
+    // 孵化只在“值得被看见”时弹：首次该物种 / 虚弱 / 不孕 / 闪光。其余只进日志。
+    const hatchEvent = e.type === 'egg' && !Number.isInteger(e.pen);
+    if (hatchEvent && !e.special) continue;
     toast(e.msg, e.type === 'warn' ? 'bad' : 'good');
     important++;
   }
@@ -548,16 +551,18 @@ function typeBadges(types) {
   return types.map((t) => `<span class="type" style="--c:${typeColor(t)}">${typeZh(t)}</span>`).join('');
 }
 
-function statRowHtml(key, value, unlocked) {
+function statRowHtml(key, value, unlocked, iv = null) {
   if (!unlocked) {
     return `<div class="stat-row locked"><span>${STAT_ZH[key]}</span><div class="bar"><i style="width:0%"></i></div><b>？？？</b></div>`;
   }
-  return `<div class="stat-row"><span>${STAT_ZH[key]}</span><div class="bar"><i style="width:${Math.min(100, (value / 220) * 100)}%"></i></div><b>${value}</b></div>`;
+  const ivTag = iv == null ? '' : `<em class="iv">IV ${iv}</em>`;
+  return `<div class="stat-row"><span>${STAT_ZH[key]}</span><div class="bar"><i style="width:${Math.min(100, (value / 220) * 100)}%"></i></div><b>${value}${ivTag}</b></div>`;
 }
 
 // ---------- 培育栏 ----------
 function pensSignature() {
-  const key = (m) => (m ? `${m.uid}:${m.dexId}:${knownKey(m.dexId)}` : '-');
+  // 卡片上不再显示蛋组知识，签名也就无需包含 knownKey
+  const key = (m) => (m ? `${m.uid}:${m.dexId}` : '-');
   const corpseKey = (c) => (c ? `c${c.dexId}:${c.no ?? ''}` : '-');
   const fails = (S.failedPairs || []).join(',');
   return (
@@ -608,6 +613,8 @@ function corpseSlotHtml(corpse, pen, slot) {
   </div>`;
 }
 
+// 培育栏卡片只留“不做决定就会做错”的几项：立绘、物种、性别、等级、特殊标记。
+// 蛋组只在“选谁放进栏位”时有用，因此移进选择器；属性徽章与经验条与繁育无关，删掉。
 function monSlotHtml(mon, pen, slot) {
   const s = sp(mon.dexId);
   return `<div class="slot filled ${mon.shiny ? 'shiny' : ''}${researchedCls(mon)}" id="pen-${pen}-${slot}" data-act="open-mon" data-uid="${mon.uid}" title="查看详情">
@@ -615,10 +622,7 @@ function monSlotHtml(mon, pen, slot) {
     <img id="pen-${pen}-${slot}-img" src="${sprite(mon.dexId, mon.shiny)}"${imgFallback(mon.dexId, mon.shiny)}${spriteFilter(mon)} alt="${s.zh}" />
     <div class="nm">${s.zh}<span class="g">${L.genderZh(mon.gender)}</span>${mon.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
     <div class="lv" id="pen-${pen}-${slot}-lv">Lv.${mon.level}</div>
-    <div class="egg-grp">${L.eggGroupsDisplay(S, mon.dexId)}</div>
     ${L.sterilityLabel(mon) ? `<div class="sterile-badge">${L.sterilityLabel(mon)}</div>` : ''}
-    <div class="types">${typeBadges(s.types)}</div>
-    <div class="bar exp" style="width:100%"><i id="pen-${pen}-${slot}-exp" style="width:0%"></i></div>
   </div>`;
 }
 
@@ -678,9 +682,7 @@ function patchPens() {
 
 function patchSlot(mon, pen, slot) {
   if (!mon) return;
-  const s = sp(mon.dexId);
   setText(el(`pen-${pen}-${slot}-lv`), `Lv.${mon.level}`);
-  setWidth(el(`pen-${pen}-${slot}-exp`), pct(mon.exp, L.expNeeded(mon.level, s.growthRate)));
   applyToleranceFilter(el(`pen-${pen}-${slot}-img`), mon);
   // 研究完成会改变卡片底色，这里实时切换，不再等结构签名变化
   const card = el(`pen-${pen}-${slot}`);
@@ -1330,8 +1332,10 @@ function monModalHtml(uid) {
   const need = L.expNeeded(mon.level, s.growthRate);
   const st = calcStats(mon);
   const revealed = new Set(L.revealedStats(S, mon.dexId));
+  // 研究 100% 之后，天赋不再需要猜——直接给出六项个体值
+  const known = L.isResearched(S, mon.dexId);
   const statRows = Object.keys(STAT_ZH)
-    .map((k) => statRowHtml(k, st[k], revealed.has(k)))
+    .map((k) => statRowHtml(k, st[k], revealed.has(k), known ? mon.ivs?.[k] ?? 0 : null))
     .join('');
   const plans = L.evoPlanFor(S, mon);
   const evoHtml = plans.length
@@ -1402,6 +1406,7 @@ function monModalHtml(uid) {
         ${mon.shiny ? '<div class="kv"><span class="k">闪光</span><span class="v" style="color:#ffd76a">✨ 是</span></div>' : ''}
         ${L.sterilityLabel(mon) ? `<div class="kv"><span class="k">生育</span><span class="v" style="color:#ffb3ba">${L.sterilityLabel(mon)}</span></div>` : ''}
         <div class="kv"><span class="k">蛋组</span><span class="v">${L.eggGroupsDisplay(S, mon.dexId)}</span></div>
+        ${mon.inbred ? `<div class="kv"><span class="k">血缘</span><span class="v" style="color:#ffb3ba">近亲后代 · 第 ${mon.gen} 代</span></div>` : ''}
         ${labMeta}
       </div>
     </div>
@@ -1527,10 +1532,13 @@ function pickerModalHtml(penIdx, slot) {
     .map((m) => {
       const s = sp(m.dexId);
       const isBlocked = !!other && m.dexId !== other.dexId && blocked.has(m.dexId);
-      const card = `<button class="pick${isBlocked ? ' blocked' : ''}${researchedCls(m)}" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}" ${isBlocked ? 'disabled' : ''}>
+      // 近亲：血统层面的提示；蛋组高亮：只用“已识别”的蛋组，不揭示未知
+      const kin = !!other && L.isKin(other, m);
+      const eggMatch = !!other && L.sharesKnownEggGroup(S, other.dexId, m.dexId);
+      const card = `<button class="pick${isBlocked ? ' blocked' : ''}${researchedCls(m)}${eggMatch ? ' egg-match' : ''}" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}" ${isBlocked ? 'disabled' : ''}>
         ${monNoTag(m)}
         <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m)} alt="" />
-        <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}</span>
+        <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}${kin ? '<span class="kin-badge">近亲</span>' : ''}</span>
         <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)}${L.sterilityLabel(m) ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
       return card;

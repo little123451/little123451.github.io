@@ -2048,7 +2048,7 @@ p {
 
 .stat-row {
   display: grid;
-  grid-template-columns: 42px 1fr 46px;
+  grid-template-columns: 42px 1fr auto;
   align-items: center;
   gap: 8px;
   font-size: 11px;
@@ -2059,6 +2059,16 @@ p {
   color: var(--text);
   font-variant-numeric: tabular-nums;
   text-align: right;
+  min-width: 46px;
+}
+
+/* 研究 100% 后追加的个体值：只做小字角标，不抢主数值 */
+.stat-row .iv {
+  margin-left: 4px;
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 400;
+  color: var(--muted);
 }
 
 .stat-row .bar {
@@ -2154,6 +2164,22 @@ p {
   border-radius: inherit;
   background: rgba(5, 10, 18, 0.32);
   pointer-events: none;
+}
+
+/* 蛋组高亮：只用“已识别”的蛋组。绿框很弱，不占布局、不加文字 */
+.pick.egg-match {
+  box-shadow: inset 0 0 0 1px rgba(110, 231, 183, 0.5);
+}
+
+/* 近亲标记：血统层面的提示，和蛋组高亮互不影响 */
+.pick .kin-badge {
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #ffb3ba;
+  background: rgba(255, 107, 122, 0.16);
 }
 
 /* 从培育栏送进实验室：实验台选择列表 */

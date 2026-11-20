@@ -1,7 +1,7 @@
 // 规则数据层：数值、文案、静态表与纯函数。
 // 这里不依赖运行时状态，也不 import 逻辑层；调参优先改这个文件。
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export const CONFIG = {
   secondsPerDay: 12,
@@ -43,7 +43,11 @@ export const CONFIG = {
   // 雄性个体更耐折腾：同物种、同等级的 1.25 倍
   maleToleranceFactor: 1.25,
   // 正常繁育：承担损耗的一方（母体；无雌性时是百变怪）每次产蛋消耗的耐受度
-  breedToleranceCost: 32,
+  breedToleranceCost: 40,
+  // 体质系数：近亲子代 = min(双亲) × 0.85，下限 0.5；非近亲 = 均值 + 0.2（封顶 1）
+  kinVigorFactor: 0.85,
+  vigorFloor: 0.5,
+  hybridVigorBonus: 0.2,
   // 个体出生时的稀有特质：闪光 1/4096，不孕/不育 2/4096（约为闪光两倍）
   shinyChance: 1 / 4096,
   sterileChance: 2 / 4096,
@@ -73,7 +77,7 @@ export const CONFIG = {
   experimentCostMultiplier: 1.5,
   // 实验室命中动效的损耗基准：损耗达到该值时动效最烈
   experimentHitLossCap: 150,
-  saveKey: 'rocket-simulator-save-v3',
+  saveKey: 'rocket-simulator-save-v4',
 };
 
 export const STAT_KEYS = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
@@ -121,8 +125,10 @@ export function toleranceCap(level = 1, gender = 'x') {
   return Math.round(base * (gender === 'm' ? CONFIG.maleToleranceFactor : 1));
 }
 
+// 体质系数（vigor）乘在耐受上限上：近亲后代更脆，外血能把它拉回来
 export function maxTolerance(mon) {
-  return toleranceCap(mon?.level ?? 1, mon?.gender);
+  const base = toleranceCap(mon?.level ?? 1, mon?.gender);
+  return Math.max(1, Math.round(base * (mon?.vigor ?? 1)));
 }
 
 // ---------- 市场 ----------

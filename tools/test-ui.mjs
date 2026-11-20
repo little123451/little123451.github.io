@@ -86,11 +86,13 @@ UI.mount(state, { onSave: () => { saveCalls++; }, onReset: () => { resetCalls++;
 UI.setExperimentLoading(false);
 check(makeEl('#pens').innerHTML.includes('波波'), '培育栏渲染出波波');
 check(makeEl('#pens').innerHTML.includes('烈雀'), '培育栏渲染出烈雀');
-check(makeEl('#pens').innerHTML.includes('？？？'), '未确认的蛋组显示为 ？？？');
+check(!makeEl('#pens').innerHTML.includes('？？？'), '培育栏卡片不再显示蛋组（已移入选择器）');
+check(!makeEl('#pens').innerHTML.includes('class="type"'), '培育栏卡片不再显示属性徽章');
+check(!makeEl('#pens').innerHTML.includes('bar exp'), '培育栏卡片不再显示经验条');
 check(!makeEl('#pens').innerHTML.includes('可以配种'), '培育栏不再显示“可以配种”提示');
 check(!makeEl('#pens').innerHTML.includes('需要一雄一雌'), '培育栏不再显示性别提示');
 check(makeEl('#orders').innerHTML.includes('🪙'), '订单渲染出报酬');
-check(makeEl('#orders').innerHTML.includes('部'), '订单展示需求部门');
+check(makeEl('#orders').innerHTML.includes('class="dept'), '订单展示需求部门');
 check(makeEl('#shop').innerHTML.includes('蛋'), '市场渲染出蛋');
 check(makeEl('#shop').innerHTML.includes('经验糖果'), '市场售卖经验糖果');
 check(makeEl('#shop').innerHTML.includes('蛋组'), '蛋市场显示蛋组');
@@ -242,14 +244,15 @@ state.lastTaskDay = lastTaskBeforeDecay;
 UI.render();
 
 // 围栏：闲置宝可梦
-check(makeEl('#idle').innerHTML.includes('围栏是空的'), '围栏初始为空');
+check(L.idleMons(state).length === 1, '围栏初始只有开局第三只');
+check(makeEl('#idle').innerHTML.includes('烈雀'), '围栏显示开局的第三只');
 const idler = L.createMon(state, 74, 6, { origin: 'test' });
 state.mons.push(idler);
 UI.render();
 check(makeEl('#idle').innerHTML.includes('小拳石'), '围栏显示闲置宝可梦');
 check(makeEl('#idle').innerHTML.includes(`data-uid="${idler.uid}"`), '围栏卡片可点击查看');
 check(idler.no == null, '围栏出生个体尚未编号');
-check(makeEl('#idle-hint').textContent.includes('1'), '围栏数量提示', makeEl('#idle-hint').textContent);
+check(makeEl('#idle-hint').textContent.includes(String(L.idleMons(state).length)), '围栏数量提示', makeEl('#idle-hint').textContent);
 L.assignPen(state, 1, 'a', idler.uid);
 UI.render();
 check(idler.no > 0 && makeEl('#pens').innerHTML.includes(`#${String(idler.no).padStart(4, '0')}`), '进入培育栏后分配并显示编号');
@@ -421,7 +424,7 @@ for (let i = 0; i < 10; i++) {
 }
 check(pensEl._writes === pensWrites, '数值变化不重建培育栏 DOM', `(${pensWrites}→${pensEl._writes})`);
 check(ordersEl._writes === ordersWrites, '倒计时不重建订单 DOM', `(${ordersWrites}→${ordersEl._writes})`);
-check(expNode.style.width !== expBefore, '经验条宽度仍在更新', `${expBefore}→${expNode.style.width}`);
+check(!makeEl('#pen-0-a').innerHTML.includes('bar exp'), '培育栏卡片不再有经验条');
 
 // 连续渲染压力测试
 let renderError = null;
@@ -716,7 +719,7 @@ let idleHtml = makeEl('#idle').innerHTML;
 check(idleHtml.includes('<div class="idle-sec" data-sec="related">'), '默认展示培育相关段');
 check(idleHtml.includes('<div class="idle-sec hidden" data-sec="others">'), '其它段默认隐藏');
 check(idleHtml.includes(`idle-${evoIdle.uid}`) && idleHtml.includes(`idle-${unrelated.uid}`), '两段个体都在页面里，靠开关切换');
-check(makeEl('#idle-tab-related').textContent.includes('培育相关（1）'), '开关显示培育相关数量', makeEl('#idle-tab-related').textContent);
+check(makeEl('#idle-tab-related').textContent.includes('培育相关（2）'), '开关显示培育相关数量', makeEl('#idle-tab-related').textContent);
 check(makeEl('#idle-tab-others').textContent.includes('其它（1）'), '开关显示其它数量', makeEl('#idle-tab-others').textContent);
 
 click('idle-section', { section: 'others' });
@@ -851,6 +854,69 @@ const dateLogDesc = L.experimentsFor(16).find((e) => e.id === 'measure').desc;
 check(dateLogHtml.includes(dateLogDesc) && !dateLogHtml.includes(`「${dateLogDesc}」`), '实验行为描述不带引号');
 check((dateLogHtml.match(/<span class="d">D55<\/span>/g) || []).length === 2, '同一个体同日只显示一次日期');
 check((dateLogHtml.match(/<span class="d">D4<\/span>/g) || []).length === 1, '日期变化时重新显示');
+click('close');
+
+// ---------- 繁育：近亲标记 / 蛋组绿框 / 个体值 ----------
+const breedUi = L.newGame(8895);
+const bKinDad = L.createMon(breedUi, 16, 30, { gender: 'm' });
+const bKinDau = L.createMon(breedUi, 21, 5, { gender: 'f' });
+bKinDau.ancestors = [bKinDad.uid];
+bKinDau.gen = 1;
+bKinDau.inbred = true;
+const bOther = L.createMon(breedUi, 25, 5, { gender: 'f' }); // 皮卡丘：陆上 / 妖精
+breedUi.mons = [bKinDad, bKinDau, bOther];
+breedUi.pens = [
+  { a: bKinDad.uid, b: null, breed: 0 },
+  { a: null, b: null, breed: 0 },
+  { a: null, b: null, breed: 0 },
+];
+breedUi.eggs = [];
+UI.setState(breedUi);
+UI.render();
+
+// 蛋组未知：不亮
+click('open-picker', { pen: '0', slot: 'b' });
+check(!makeEl('#modal').innerHTML.includes('egg-match'), '蛋组未识别时不给绿框');
+check(makeEl('#modal').innerHTML.includes('kin-badge') && makeEl('#modal').innerHTML.includes('近亲'), '选择器标出近亲');
+click('close');
+
+// 蛋组已识别：与栏位内那只共享蛋组的候选给绿框
+breedUi.eggKnown = { 16: ['flying'], 21: ['flying'], 25: ['ground', 'fairy'] };
+UI.render();
+click('open-picker', { pen: '0', slot: 'b' });
+const pickHtml = makeEl('#modal').innerHTML;
+check(pickHtml.includes('egg-match'), '已知同蛋组的候选有绿框');
+const btnFor = (uid) => (pickHtml.match(new RegExp(`<button[^>]*data-uid="${uid}"[^>]*>`)) || [''])[0];
+const dauBtn = btnFor(bKinDau.uid);
+const otherBtn = btnFor(bOther.uid);
+check(dauBtn.includes('egg-match'), '同蛋组的候选带绿框');
+check(!otherBtn.includes('egg-match'), '不同蛋组的候选不带绿框');
+click('close');
+
+// 个体详情：近亲后代 · 第 N 代
+click('open-mon', { uid: bKinDau.uid });
+const kinDetail = makeEl('#modal').innerHTML;
+check(kinDetail.includes('近亲后代'), '详情显示近亲后代');
+check(kinDetail.includes('第 1 代'), '详情显示世代');
+click('close');
+
+// 个体值：研究 100% 才显示
+const ivUi = L.newGame(8896);
+const ivMon = L.createMon(ivUi, 16, 20, { gender: 'm' });
+ivMon.ivs = { hp: 1, atk: 31, def: 5, spa: 12, spd: 24, spe: 30 };
+ivUi.mons = [ivMon];
+UI.setState(ivUi);
+UI.render();
+click('open-mon', { uid: ivMon.uid });
+check(!makeEl('#modal').innerHTML.includes('class="iv"'), '未研究时不显示个体值');
+click('close');
+ivUi.research[16] = L.researchRequirement(16);
+ivUi.dex = [16];
+UI.render();
+click('open-mon', { uid: ivMon.uid });
+const ivHtml = makeEl('#modal').innerHTML;
+check(ivHtml.includes('IV 31'), '研究 100% 后显示个体值', ivHtml.includes('IV 31') ? '' : '缺失');
+check((ivHtml.match(/class="iv"/g) || []).length === 6, '六项都显示个体值');
 click('close');
 
 console.log(`\n${failures === 0 ? 'UI 测试全部通过 ✓' : `${failures} 项失败 ✗`}`);
