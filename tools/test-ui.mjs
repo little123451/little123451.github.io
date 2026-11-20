@@ -154,8 +154,12 @@ check(saveCalls === 1, '手动保存调用存档钩子');
 for (const tab of ['pens', 'lab', 'idle', 'market', 'dex']) {
   click('tab', { tab });
   check(makeEl(`#page-${tab}`).classList.contains('active'), `TAB 切换：${tab}`);
+  if (tab === 'lab') check(UI.getSpeed() === 0, '切到实验室自动暂停');
+  if (tab === 'idle') check(UI.getSpeed() === 2, '离开实验室恢复速度');
+  if (tab === 'dex') check(UI.getSpeed() === 0, '切到研究笔记自动暂停');
 }
 click('tab', { tab: 'pens' });
+check(UI.getSpeed() === 2, '离开研究笔记恢复速度');
 check(makeEl('#shop').innerHTML.includes('🪙'), '道具价格旁有金币图标');
 check(makeEl('#upgrades').innerHTML.includes('孵化器'), '设施渲染出孵化器');
 check(makeEl('#upgrades').innerHTML.includes('需 助理研究员'), '设施升级显示职级限制');

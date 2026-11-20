@@ -1810,8 +1810,7 @@ p {
 .exp-journal {
   display: grid;
   gap: 8px;
-  max-height: 48dvh;
-  overflow: auto;
+  overflow: visible;
 }
 
 /* 同一个编号的实验记录合并成一组：编号 / 物种 / 等级只出现在组头 */
@@ -1906,7 +1905,9 @@ p {
   width: 100%;
   max-width: 760px;
   max-height: 92dvh;
-  overflow: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding: 16px 16px calc(18px + env(safe-area-inset-bottom));
   border-radius: 20px 20px 0 0;
   border: 1px solid #2a3f60;
@@ -2118,8 +2119,7 @@ p {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  max-height: 52dvh;
-  overflow: auto;
+  overflow: visible;
 }
 
 .pick {
@@ -2195,8 +2195,7 @@ p {
 .slot-list {
   display: grid;
   gap: 6px;
-  max-height: 52dvh;
-  overflow: auto;
+  overflow: visible;
 }
 
 .slot-row {

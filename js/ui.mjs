@@ -66,7 +66,9 @@ export function setExperimentLoading(enabled = true, overrideMs = null) {
 
 // 底部 TAB：培育 / 实验室 / 围栏 / 经营 / 研究笔记
 const TABS = ['pens', 'lab', 'idle', 'market', 'dex'];
+const AUTO_PAUSE_TABS = new Set(['lab', 'dex']);
 let activeTab = 'pens';
+let autoPausedSpeed = null;
 // 围栏分段开关：培育相关 / 其它
 let idleSection = 'related';
 
@@ -101,6 +103,11 @@ export function setState(next) {
   idleSection = 'related';
   resetSignatures();
   activeTab = 'pens';
+  if (autoPausedSpeed != null) {
+    speed = autoPausedSpeed;
+    autoPausedSpeed = null;
+    hooks.onSpeed?.(speed);
+  }
   seedLogs(next);
   if (pendingExp?.timer) clearInterval(pendingExp.timer);
   pendingExp = null;
@@ -133,10 +140,26 @@ function setTab(tab) {
     renderTabs();
     return;
   }
+  const wasAutoPause = AUTO_PAUSE_TABS.has(activeTab);
+  const willAutoPause = AUTO_PAUSE_TABS.has(next);
   activeTab = next;
+  if (willAutoPause && !wasAutoPause && speed > 0) {
+    autoPausedSpeed = speed;
+    setSpeedValue(0);
+  } else if (!willAutoPause && wasAutoPause && autoPausedSpeed != null) {
+    const restore = autoPausedSpeed;
+    autoPausedSpeed = null;
+    setSpeedValue(restore);
+  }
   renderTabs();
   const main = el('main');
   if (main && typeof main.scrollTo === 'function') main.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function setSpeedValue(next) {
+  speed = Number(next) || 0;
+  hooks.onSpeed?.(speed);
+  renderTop();
 }
 
 export function getSpeed() {
@@ -225,8 +248,8 @@ function bind() {
 function handleAction(act, d) {
   switch (act) {
     case 'speed':
-      speed = Number(d.speed);
-      hooks.onSpeed?.(speed);
+      autoPausedSpeed = null;
+      setSpeedValue(Number(d.speed));
       render();
       break;
     case 'save':
@@ -1894,6 +1917,7 @@ function helpModalHtml() {
         <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的研究笔记条目，<b>没有免费的实验</b>。每种实验都有冷却，越深入的实验冷却越久（最长 30 秒）。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽死亡，或花金币处理；死亡的实验对象会留下遗体，同样占用实验台，必须付费处理才能空出；实验具体影响不会事先显示。已执行过的行为会标“已记录”。每次实验会先播放加载条，结束后只显示实验状态与实验日志，不展示结果文案；手动处理活体会记入日志和损耗。<b>该物种研究 100% 之后不再记录任何实验日志</b>，死亡后的遗体处理也不重复记录。</li>
         <li><b>终末榨取</b>：某个物种研究到 100% 之后，实验就结束了，只剩「终末榨取」——把样本一次用尽，它必死，换来若干份<b>样本</b>。耐受越足，留下的样本越多；样本按物种分开记账。</li>
         <li><b>实验室助手</b>：升到高级研究员之后有助手可用。某个物种的 5 条实验你都亲手做过之后，可以把实验台交给助手自动研究——进度自己涨、耐受自己掉、耗材自己扣。研究跑满它自己会停，但台子还归它管，直到你把遗体处理掉。想自己来就点「打断」。</li>
+        <li><b>暂停</b>：切到「实验室」或「研究笔记」时会自动暂停时间，切回其他页面会恢复原来的速度；也可以随时点顶部的暂停键。</li>
         <li><b>耐受度</b>：上限随等级提高（Lv.1 为 100，每级 +2），<b>雄性再乘 1.25</b>；出厂即满，但只有进了实验室才能在界面上看到。繁育、争斗、霸凌、实验都会消耗它，归零即死亡：实验室个体留下遗体占位，围栏里被霸凌致死的个体留下遗体等待处理，培育栏里死亡的个体也会留下遗体（需付费处理），其他情况离队。物种研究完成后，只剩最伤身的那种实验还能用。</li>
         <li><b>能力值</b>：刚接触的物种看不全能力值。随着该物种的研究进度，能力项会按种族值从高到低逐项披露。</li>
         <li><b>研究笔记</b>：研究过的物种会显示灰度图标和进度，100% 完成后才变成彩色；已完成条目会记录完成日期与损耗掉的个体数，物种详情和研究笔记页还会显示最近的实验日志（含处理记录）。</li>
