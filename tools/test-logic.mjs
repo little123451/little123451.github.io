@@ -403,7 +403,7 @@ const harshExp = L.experimentsFor(1).find((e) => e.id === 'sp1-seed-cut');
 check(L.toleranceLoss(dmgProbe, harshExp) >= 120, 'harsh 档损耗大幅提高', `(${L.toleranceLoss(dmgProbe, harshExp)})`);
 check(harshExp.progress === EXPERIMENT_TIERS.harsh.progress, 'harsh 档进度按档位表');
 
-// 研究进度 100% 后不再有冷却
+// 研究进度 100% 后：实验关闭，只剩终末榨取
 const noCdState = L.newGame(3100);
 const noCdMon = L.createMon(noCdState, 16, CONFIG.maxLevel, { gender: 'm' });
 noCdMon.tolerance = 600; // 测试夹具：只看冷却，不受损耗影响
@@ -414,11 +414,118 @@ if (!noCdState.dex.includes(16)) noCdState.dex.push(16);
 const noCdHardest = L.experimentsFor(16).reduce((best, e) => (L.toleranceLoss(noCdMon, e) > L.toleranceLoss(noCdMon, best) ? e : best), L.experimentsFor(16)[0]);
 noCdState.expCd[noCdHardest.id] = 30; // 遗留的冷却也应被无视
 const nc1 = L.startExperiment(noCdState, noCdMon.uid, noCdHardest.id);
-const nc2 = L.startExperiment(noCdState, noCdMon.uid, noCdHardest.id);
-check(nc1.ok && nc2.ok, '研究完成后连续实验不再被冷却拦住', `(${nc2.msg})`);
+check(!nc1.ok && nc1.msg.includes('终末榨取'), '研究完成后不再能做实验', `(${nc1.msg})`);
 check(L.experimentCooldownFor(noCdState, noCdMon, noCdHardest.id) === 0, '研究完成后不记录冷却');
-// 研究已满的物种：实验照做，但不再往研究笔记里写日志
+// 研究已满的物种：实验被拒，自然也不会写日志
 check((noCdState.expJournal || []).length === 0, '研究满后实验不再写入日志', `(${(noCdState.expJournal || []).length})`);
+
+// ---------- 终末榨取 ----------
+const fxState = L.newGame(3300);
+const fxMon = L.createMon(fxState, 16, CONFIG.maxLevel, { gender: 'm' });
+fxMon.tolerance = 218;
+fxState.mons.push(fxMon);
+L.assignLab(fxState, 0, fxMon.uid);
+fxState.gold = 1000;
+const fxEarly = L.finalExtraction(fxState, 0);
+check(!fxEarly.ok, '研究未完成不能终末榨取', fxEarly.msg);
+fxState.research[16] = L.researchRequirement(16);
+if (!fxState.dex.includes(16)) fxState.dex.push(16);
+const fxGoldBefore = fxState.gold;
+const fxOk = L.finalExtraction(fxState, 0);
+check(fxOk.ok, '研究完成后可以终末榨取', fxOk.msg);
+check(fxOk.amount >= 1 && fxOk.amount <= Math.ceil((218 / 50) * 2), '样本数量落在 1..2μ', `(${fxOk.amount})`);
+check(L.samplesOf(fxState, 16) === fxOk.amount, '样本按物种累计');
+check(L.samplesOf(fxState, 21) === 0, '样本不串物种');
+check(fxState.gold === fxGoldBefore - CONFIG.finalExtractionCost, '终末榨取扣耗材');
+check(L.monByUid(fxState, fxMon.uid) === null, '终末榨取后个体死亡');
+check(!!fxState.lab[0].corpse, '终末榨取后留下遗体占位');
+
+// 产量随当前耐受上升（同一 seed，只改耐受）
+const extractAt = (tol) => {
+  const st = L.newGame(3301);
+  const m = L.createMon(st, 16, CONFIG.maxLevel, { gender: 'm' });
+  m.tolerance = tol;
+  st.mons.push(m);
+  L.assignLab(st, 0, m.uid);
+  st.research[16] = L.researchRequirement(16);
+  if (!st.dex.includes(16)) st.dex.push(16);
+  st.gold = 5000;
+  return L.finalExtraction(st, 0).amount;
+};
+check(extractAt(218) > extractAt(100), '耐受越高，样本越多', `(${extractAt(100)} → ${extractAt(218)})`);
+
+// ---------- 实验室助手 ----------
+const asstRankState = L.newGame(3405);
+check(L.assistantSlots(asstRankState) === 0, '职级 0 没有助手');
+asstRankState.rank = 3;
+check(L.assistantSlots(asstRankState) === 1, '职级 3 给 1 个助手');
+asstRankState.rank = 4;
+check(L.assistantSlots(asstRankState) === 2, '职级 4 给 2 个助手');
+asstRankState.rank = 5;
+check(L.assistantSlots(asstRankState) === 3, '职级 5 给 3 个助手');
+
+const makeAssistState = (seed) => {
+  const st = L.newGame(seed);
+  st.rank = 3;
+  st.gold = 10000;
+  const m = L.createMon(st, 16, CONFIG.maxLevel, { gender: 'm' });
+  st.mons.push(m);
+  L.assignLab(st, 0, m.uid);
+  return { st, m };
+};
+
+const asstA = makeAssistState(3400);
+check(!L.canAssignAssistant(asstA.st, 0).ok, '没亲手做完 5 条实验前不能安排助手');
+for (const e of L.experimentsFor(16)) {
+  asstA.st.expLog[16] = { ...(asstA.st.expLog[16] || {}), [e.id]: 1 };
+}
+check(L.canAssignAssistant(asstA.st, 0).ok, '5 条实验做完后可以安排助手');
+const asgA = L.assignAssistant(asstA.st, 0);
+check(asgA.ok && asstA.st.lab[0].assistant && asstA.st.lab[0].auto, '助手接手并开始自动研究');
+check((asstA.st.expJournal || [])[0]?.expName === '安排助手对其进行实验', '写入「安排助手」日志');
+const tolA = asstA.m.tolerance;
+const resA = L.researchProgress(asstA.st, 16);
+const goldA = asstA.st.gold;
+L.tick(asstA.st, 0.1, 1);
+check(L.researchProgress(asstA.st, 16) > resA, '助手推进研究进度');
+check(asstA.m.tolerance < tolA, '助手消耗耐受度');
+check(asstA.st.gold < goldA, '助手消耗耗材');
+
+// 到 100% 自动停，但仍占用助手
+asstA.st.research[16] = L.researchRequirement(16) - 0.1;
+L.tick(asstA.st, 0.1, 1);
+check(L.isResearched(asstA.st, 16), '助手能把研究推到 100%');
+check(!asstA.st.lab[0].auto, '到 100% 自动停止');
+check(asstA.st.lab[0].assistant, '到 100% 仍占用助手');
+
+// 打断：停止自动、助手仍占用、可再手动做实验
+const asstB = makeAssistState(3401);
+for (const e of L.experimentsFor(16)) {
+  asstB.st.expLog[16] = { ...(asstB.st.expLog[16] || {}), [e.id]: 1 };
+}
+L.assignAssistant(asstB.st, 0);
+const itrB = L.interruptAssistant(asstB.st, 0);
+check(itrB.ok, '可以打断助手');
+check(!asstB.st.lab[0].auto && asstB.st.lab[0].assistant, '打断后停止推进但助手仍占用');
+check((asstB.st.expJournal || [])[0]?.expName === '你决定亲自动手', '打断写入「亲自动手」日志');
+const manualB = L.startExperiment(asstB.st, asstB.m.uid, L.experimentsFor(16)[0].id);
+check(manualB.ok, '打断后可以自己动手做实验', manualB.msg);
+check(L.resumeAssistant(asstB.st, 0).ok && asstB.st.lab[0].auto, '可以再交给助手');
+
+// 助手把个体用死：死亡 + 留遗体 + 停止自动 + 助手仍占用
+const asstC = makeAssistState(3402);
+for (const e of L.experimentsFor(16)) {
+  asstC.st.expLog[16] = { ...(asstC.st.expLog[16] || {}), [e.id]: 1 };
+}
+L.assignAssistant(asstC.st, 0);
+asstC.m.tolerance = 2;
+L.tick(asstC.st, 0.1, 1);
+check(L.monByUid(asstC.st, asstC.m.uid) === null, '助手会把个体用死');
+check(!!asstC.st.lab[0].corpse, '用死后留下遗体');
+check(!asstC.st.lab[0].auto && asstC.st.lab[0].assistant, '用死后停止自动，助手仍占用');
+asstC.st.gold = 1000;
+const prC = L.processLabSlot(asstC.st, 0);
+check(prC.ok && !asstC.st.lab[0].assistant, '处理遗体后助手释放');
 
 // ---------- 蛋贩子：每两周换货 / 换货费递增并随时间回落 ----------
 check(EGG_SOURCES.length === 300 && new Set(EGG_SOURCES).size === 300, '来源描述共 300 条且不重复');

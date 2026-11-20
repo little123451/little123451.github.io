@@ -1,7 +1,7 @@
 // 规则数据层：数值、文案、静态表与纯函数。
 // 这里不依赖运行时状态，也不 import 逻辑层；调参优先改这个文件。
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export const CONFIG = {
   secondsPerDay: 12,
@@ -77,7 +77,16 @@ export const CONFIG = {
   experimentCostMultiplier: 1.5,
   // 实验室命中动效的损耗基准：损耗达到该值时动效最烈
   experimentHitLossCap: 150,
-  saveKey: 'rocket-simulator-save-v4',
+  // 终末榨取：研究 100% 后唯一的处置动作，一次必死，产出样本
+  finalExtractionCost: 180,
+  // 样本产出：μ = 当前耐受 / 50，σ = 0.3μ，上限 2μ
+  sampleMuDivisor: 50,
+  sampleSigmaRatio: 0.3,
+  // 实验室助手：连续 tick 推进，速率对齐 harsh 档
+  assistantProgressPerSec: 0.5,
+  assistantTolerancePerSec: 3.86,
+  assistantGoldPerSec: 6.4,
+  saveKey: 'rocket-simulator-save-v5',
 };
 
 export const STAT_KEYS = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];

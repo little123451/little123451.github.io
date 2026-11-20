@@ -384,6 +384,34 @@ function handleAction(act, d) {
       render();
       break;
     }
+    case 'assign-assistant': {
+      const r = L.assignAssistant(S, Number(d.slot));
+      toast(r.msg, r.ok ? 'good' : 'bad');
+      render();
+      break;
+    }
+    case 'interrupt-assistant': {
+      const r = L.interruptAssistant(S, Number(d.slot));
+      toast(r.msg, r.ok ? 'good' : 'bad');
+      render();
+      break;
+    }
+    case 'resume-assistant': {
+      const r = L.resumeAssistant(S, Number(d.slot));
+      toast(r.msg, r.ok ? 'good' : 'bad');
+      render();
+      break;
+    }
+    case 'final-extract': {
+      const r = L.finalExtraction(S, Number(d.slot));
+      if (!r.ok) {
+        toast(r.msg, 'bad');
+        break;
+      }
+      render();
+      openModal('extractresult', { amount: r.amount, name: r.name, dexId: r.dexId });
+      break;
+    }
     case 'deliver': {
       const r = L.deliver(S, d.order, d.uid);
       toast(r.msg, r.ok ? 'good' : 'bad');
@@ -753,7 +781,9 @@ function labSignature() {
   const key = (slot) => {
     if (slot.uid) {
       const m = L.monByUid(S, slot.uid);
-      return m ? `m:${m.uid}:${m.dexId}:${knownKey(m.dexId)}` : 'm:?';
+      if (!m) return 'm:?';
+      const flags = `${slot.assistant ? 1 : 0}${slot.auto ? 1 : 0}${L.isResearched(S, m.dexId) ? 1 : 0}${L.speciesHandled(S, m.dexId) ? 1 : 0}`;
+      return `m:${m.uid}:${m.dexId}:${knownKey(m.dexId)}:${flags}`;
     }
     if (slot.corpse) return `c:${slot.corpse.dexId}:${slot.corpse.level}:${slot.corpse.day}`;
     return '-';
@@ -791,7 +821,30 @@ function ensureLab() {
       }
       const spc = sp(mon.dexId);
       const done = L.isResearched(S, mon.dexId);
-      return `<div class="lab-card ${mon.shiny ? 'shiny' : ''}${researchedCls(mon)}" id="lab-${i}">
+      const auto = !!slot.auto;
+      const assistChk = L.canAssignAssistant(S, i);
+      const canExtract = L.canFinalExtraction(S, i).ok;
+      const actions = [];
+      if (done) {
+        actions.push(
+          `<button class="mini" data-act="final-extract" data-slot="${i}" ${canExtract ? '' : 'disabled'}>终末榨取 🪙 ${CONFIG.finalExtractionCost}</button>`
+        );
+      } else if (auto) {
+        actions.push(`<button class="mini" data-act="interrupt-assistant" data-slot="${i}">打断</button>`);
+      } else {
+        actions.push(`<button class="mini" data-act="open-exp" data-uid="${mon.uid}">实验</button>`);
+        if (slot.assistant) {
+          actions.push(`<button class="mini" data-act="resume-assistant" data-slot="${i}">交给助手</button>`);
+        } else {
+          actions.push(
+            `<button class="mini" data-act="assign-assistant" data-slot="${i}" ${assistChk.ok ? '' : 'disabled'} title="${esc(assistChk.ok ? '安排助手接手这台实验台' : assistChk.msg)}">安排助手</button>`
+          );
+        }
+      }
+      actions.push(
+        `<button class="ghost danger" data-act="process-lab" data-slot="${i}" id="lab-${i}-process" title="处理（不可撤销，费用随剩余耐受度变化）">处理 🪙 ${L.labProcessCost(S, i)}</button>`
+      );
+      return `<div class="lab-card ${mon.shiny ? 'shiny' : ''}${researchedCls(mon)}${auto ? ' auto' : ''}" id="lab-${i}">
         ${monNoTag(mon)}
         <div class="lab-head">
           <img id="lab-${i}-img" src="${sprite(mon.dexId, mon.shiny)}"${imgFallback(mon.dexId, mon.shiny)}${spriteFilter(mon)} alt="${spc.zh}" />
@@ -804,10 +857,11 @@ function ensureLab() {
         <div class="bar hap" style="width:100%"><i id="lab-${i}-tolbar" style="width:0%"></i></div>
         <div class="lab-stat"><span>研究进度</span><b id="lab-${i}-res">${L.researchPercent(S, mon.dexId)}%</b></div>
         <div class="bar study" style="width:100%"><i id="lab-${i}-resbar" style="width:0%"></i></div>
-        ${done ? '<div class="lab-note">研究已完成 · 只剩最伤身的那种实验</div>' : ''}
+        ${auto ? '<div class="lab-note auto">助手研究中</div>' : ''}
+        ${done ? '<div class="lab-note">研究已完成</div>' : ''}
+        ${slot.assistant && !auto ? '<div class="lab-note">助手在旁边看着</div>' : ''}
         <div class="lab-actions">
-          <button class="mini" data-act="open-exp" data-uid="${mon.uid}">实验</button>
-          <button class="ghost danger" data-act="process-lab" data-slot="${i}" id="lab-${i}-process" title="处理（不可撤销，费用随剩余耐受度变化）">处理 🪙 ${L.labProcessCost(S, i)}</button>
+          ${actions.join('')}
         </div>
       </div>`;
     })
@@ -1314,6 +1368,7 @@ function renderModal() {
   else if (modal.type === 'penlab') root.innerHTML = penLabPickerModalHtml(modal.uid);
   else if (modal.type === 'deliver') root.innerHTML = deliverModalHtml(modal.orderId);
   else if (modal.type === 'labexp') root.innerHTML = labExpModalHtml(modal.uid);
+  else if (modal.type === 'extractresult') root.innerHTML = extractResultHtml();
   else if (modal.type === 'expresult') root.innerHTML = expResultModalHtml();
   else if (modal.type === 'labpicker') root.innerHTML = labPickerModalHtml(modal.slot);
   else if (modal.type === 'ranks') root.innerHTML = ranksModalHtml();
@@ -1513,7 +1568,6 @@ function expJournalRowsHtml(dexId = null, limit = 50) {
           <span class="no">${noText}</span>
           <span class="nm">${name}</span>
           <span class="lv">Lv.${g.level}</span>
-          <span class="cnt">${g.rows.length} 次</span>
         </div>
         ${g.rows
           .map((e, i) => rowHtml(e, i === 0 || g.rows[i - 1].day !== e.day))
@@ -1630,7 +1684,7 @@ function labExpModalHtml(uid) {
       return `<div class="exp-row ${cls}" id="exp-row-${e.id}">
         <div class="exp-info"><b>${e.name}</b>${recorded ? '<span class="exp-recorded-tag">已记录</span>' : ''}</div>
         <div class="exp-cost">
-          <span>${e.cost ? `🪙 ${fmt(e.cost)}` : '免费'}</span>
+          <span>${e.cost ? `耗材 🪙 ${fmt(e.cost)}` : '免费'}</span>
           <span class="exp-cd" id="exp-cd-${e.id}">${cd > 0 ? `冷却 ${Math.ceil(cd)} 秒` : ''}</span>
         </div>
         <button id="exp-run-${e.id}" data-act="run-exp" data-uid="${mon.uid}" data-exp="${e.id}" ${disabled ? 'disabled' : ''}>${label}</button>
@@ -1646,6 +1700,18 @@ function labExpModalHtml(uid) {
         实验的具体影响不会事先显示。耐受度归零，或不足以承受下一次实验时，实验对象会死亡并留下遗体，占用实验台；处理遗体需要花金币。每种实验都有冷却，越深入冷却越久。
       </p>`;
   return modalShell(`对 ${s.zh} 进行实验`, `${progressHint}${note}<div class="exp-list">${rows}</div>`);
+}
+
+// 终末榨取的结果卡：只给“处置完成”和样本数量，不写任何说明
+function extractResultHtml() {
+  const name = modal.name || '';
+  const amount = modal.amount || 0;
+  return modalShell(
+    '处置完成 · 样本已耗尽',
+    `<div class="detail"><div class="detail-meta">
+       <div class="kv"><span class="k">样本</span><span class="v">${name}样本 × ${amount}</span></div>
+     </div></div>`
+  );
 }
 
 function expResultModalHtml() {
@@ -1825,7 +1891,9 @@ function helpModalHtml() {
         <li><b>蛋组</b>：博士一开始并不知道任何宝可梦的蛋组，界面上只显示 ???。只有亲手繁育出蛋，才会确认两边交汇的那个蛋组。</li>
         <li><b>孵化</b>：蛋在孵化器中倒计时，孵出的永远是该家族的<b>最初形态</b>；孵化步数越高越慢，升级孵化器可加速并增加蛋位。孵出后默认进<b>围栏</b>，要自己放进培育栏。蛋位满了繁育会暂停，培育栏会提示原因。</li>
         <li><b>养成</b>：栏位中的宝可梦会持续获得经验，喂<b>经验糖果</b>可加速成长；不在栏位也不在实验室的会待在<b>围栏</b>里。围栏顶部用开关在「培育相关」（培育栏物种及其进化链）与「其它」之间切换，一次只显示一段；霸凌致死留下的遗体单独放在「遗体」栏。围栏里同种同性达到 4 只后，最弱的那只会被持续霸凌、耐受度下降；移走一只即可停止；<b>百变怪不会被霸凌</b>。霸凌致死会留下遗体，需要花金币处理。</li>
-        <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的研究笔记条目，<b>没有免费的实验</b>。每种实验都有冷却，越深入的实验冷却越久（最长 30 秒）；该物种研究完成后冷却取消。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽死亡，或花金币处理；死亡的实验对象会留下遗体，同样占用实验台，必须付费处理才能空出；实验具体影响不会事先显示。已执行过的行为会标“已记录”。每次实验会先播放加载条，结束后只显示实验状态与实验日志，不展示结果文案；手动处理活体会记入日志和损耗。<b>该物种研究 100% 之后不再记录任何实验日志</b>，死亡后的遗体处理也不重复记录。</li>
+        <li><b>实验室</b>：实验台可以研究宝可梦、推进该物种的研究笔记条目，<b>没有免费的实验</b>。每种实验都有冷却，越深入的实验冷却越久（最长 30 秒）。<b>放进去就取不出来了</b>，只能继续实验，直到耐受度耗尽死亡，或花金币处理；死亡的实验对象会留下遗体，同样占用实验台，必须付费处理才能空出；实验具体影响不会事先显示。已执行过的行为会标“已记录”。每次实验会先播放加载条，结束后只显示实验状态与实验日志，不展示结果文案；手动处理活体会记入日志和损耗。<b>该物种研究 100% 之后不再记录任何实验日志</b>，死亡后的遗体处理也不重复记录。</li>
+        <li><b>终末榨取</b>：某个物种研究到 100% 之后，实验就结束了，只剩「终末榨取」——把样本一次用尽，它必死，换来若干份<b>样本</b>。耐受越足，留下的样本越多；样本按物种分开记账。</li>
+        <li><b>实验室助手</b>：升到高级研究员之后有助手可用。某个物种的 5 条实验你都亲手做过之后，可以把实验台交给助手自动研究——进度自己涨、耐受自己掉、耗材自己扣。研究跑满它自己会停，但台子还归它管，直到你把遗体处理掉。想自己来就点「打断」。</li>
         <li><b>耐受度</b>：上限随等级提高（Lv.1 为 100，每级 +2），<b>雄性再乘 1.25</b>；出厂即满，但只有进了实验室才能在界面上看到。繁育、争斗、霸凌、实验都会消耗它，归零即死亡：实验室个体留下遗体占位，围栏里被霸凌致死的个体留下遗体等待处理，培育栏里死亡的个体也会留下遗体（需付费处理），其他情况离队。物种研究完成后，只剩最伤身的那种实验还能用。</li>
         <li><b>能力值</b>：刚接触的物种看不全能力值。随着该物种的研究进度，能力项会按种族值从高到低逐项披露。</li>
         <li><b>研究笔记</b>：研究过的物种会显示灰度图标和进度，100% 完成后才变成彩色；已完成条目会记录完成日期与损耗掉的个体数，物种详情和研究笔记页还会显示最近的实验日志（含处理记录）。</li>

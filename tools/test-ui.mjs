@@ -501,15 +501,15 @@ L.tick(state, 0.5, 10);
 UI.render();
 check(makeEl('#exp-run-sample').disabled === false, '冷却结束后按钮恢复可用');
 
-// 研究 100% 后冷却取消
+// 研究 100% 后：实验关闭，只剩终末榨取
 state.research[16] = L.researchRequirement(16);
-state.expCd['sp16-stress-threshold'] = 20;
-click('open-exp', { uid: labMon.uid });
+if (!state.dex.includes(16)) state.dex.push(16);
 UI.render();
-check(!makeEl('#modal').innerHTML.includes('冷却 20 秒'), '研究满后不显示冷却');
-check(makeEl('#exp-run-sp16-stress-threshold').disabled === false, '研究满后遗留冷却不再生效');
-check(makeEl('#modal').innerHTML.includes('不再受冷却限制'), '研究满后弹窗提示无冷却');
-click('close');
+const labHtmlAfterDone = makeEl('#lab').innerHTML;
+check(!labHtmlAfterDone.includes('data-act="open-exp"'), '研究满后实验台不再提供实验按钮');
+check(labHtmlAfterDone.includes('终末榨取'), '研究满后出现终末榨取');
+check(!labHtmlAfterDone.includes('最伤身'), '不再提示“只剩最伤身的那种实验”');
+check(labHtmlAfterDone.includes('研究已完成'), '实验台标注研究已完成');
 
 click('open-mon', { uid: labMon.uid });
 check(makeEl('#modal').innerHTML.includes('实验中（只能处理）'), '详情显示实验室状态');
@@ -537,14 +537,15 @@ click('open-species', { id: '17' });
 check(makeEl('#modal').innerHTML.includes('实验对象被「处理」了'), '处理日志使用统一文案');
 click('close');
 
-// 实验死亡 → 遗体占位 → 付费处理
-const labDead = L.createMon(state, 16, 5, { gender: 'm' });
+// 实验死亡 → 遗体占位 → 付费处理（换一个没有研究完的物种：100% 之后已经不能做实验了）
+const deathExp = L.experimentsFor(21)[0];
+const labDead = L.createMon(state, 21, 5, { gender: 'm' });
 state.mons.push(labDead);
 L.assignLab(state, 1, labDead.uid);
 labDead.tolerance = 1;
 state.gold = 1000;
 UI.render();
-click('run-exp', { uid: labDead.uid, exp: 'sp16-stress-threshold' });
+click('run-exp', { uid: labDead.uid, exp: deathExp.id });
 check(makeEl('#modal').innerHTML.includes('实验结束') && makeEl('#modal').innerHTML.includes('处理遗体'), '死亡结果卡提供处理遗体按钮');
 check(!makeEl('#modal').innerHTML.includes('实验事故') && !makeEl('#modal').innerHTML.includes('实验结束 · 死亡'), '死亡结果标题不再显示死亡状态');
 check((makeEl('#modal').innerHTML.match(/data-act="close"/g) || []).length === 1, '实验结束只有一个关闭按钮');
@@ -918,6 +919,61 @@ const ivHtml = makeEl('#modal').innerHTML;
 check(ivHtml.includes('IV 31'), '研究 100% 后显示个体值', ivHtml.includes('IV 31') ? '' : '缺失');
 check((ivHtml.match(/class="iv"/g) || []).length === 6, '六项都显示个体值');
 click('close');
+
+// ---------- 实验室：助手 / 终末榨取 / 日志 ----------
+const labUi = L.newGame(8897);
+labUi.rank = 3;
+labUi.gold = 5000;
+const labUiMon = L.createMon(labUi, 16, 30, { gender: 'm' });
+labUi.mons.push(labUiMon);
+L.assignLab(labUi, 0, labUiMon.uid);
+labUi.expJournal = [
+  { day: 5, no: 7, dexId: 16, level: 12, expId: 'measure', expName: '基础体测', survived: true },
+];
+UI.setState(labUi);
+UI.render();
+click('open-species', { id: '16' });
+check(!makeEl('#modal').innerHTML.includes('class="cnt"'), '实验日志组头不再显示次数');
+click('close');
+
+const assistAttrs = () => (makeEl('#lab').innerHTML.match(/data-act="assign-assistant"[^>]*/) || [''])[0];
+check(makeEl('#lab').innerHTML.includes('安排助手'), '实验台提供安排助手按钮');
+check(assistAttrs().includes('disabled'), '没亲手做满 5 条实验时安排助手禁用');
+for (const e of L.experimentsFor(16)) {
+  labUi.expLog[16] = { ...(labUi.expLog[16] || {}), [e.id]: 1 };
+}
+UI.render();
+check(!assistAttrs().includes('disabled'), '做满实验后可以安排助手');
+click('assign-assistant', { slot: '0' });
+check(labUi.lab[0].auto && labUi.lab[0].assistant, '点击后助手开始自动研究');
+check(makeEl('#lab').innerHTML.includes('助手研究中'), '卡片显示「助手研究中」');
+click('open-species', { id: '16' });
+check(makeEl('#modal').innerHTML.includes('安排助手对其进行实验'), '日志写入「安排助手」');
+click('close');
+click('interrupt-assistant', { slot: '0' });
+check(!labUi.lab[0].auto && labUi.lab[0].assistant, '打断后停止自动但助手仍占用');
+check(!makeEl('#lab').innerHTML.includes('助手研究中'), '打断后不再显示「助手研究中」');
+click('open-species', { id: '16' });
+check(makeEl('#modal').innerHTML.includes('你决定亲自动手'), '日志写入「你决定亲自动手」');
+click('close');
+
+// 终末榨取：完成研究后取代实验
+const fxUi = L.newGame(8898);
+const fxUiMon = L.createMon(fxUi, 16, 50, { gender: 'm' });
+fxUiMon.tolerance = 200;
+fxUi.mons.push(fxUiMon);
+L.assignLab(fxUi, 0, fxUiMon.uid);
+fxUi.research[16] = L.researchRequirement(16);
+if (!fxUi.dex.includes(16)) fxUi.dex.push(16);
+fxUi.gold = 2000;
+UI.setState(fxUi);
+UI.render();
+check(makeEl('#lab').innerHTML.includes('终末榨取'), '完成研究后出现终末榨取');
+click('final-extract', { slot: '0' });
+check(makeEl('#modal').innerHTML.includes('处置完成 · 样本已耗尽'), '终末榨取结果卡标题');
+check(L.samplesOf(fxUi, 16) > 0, '样本入库');
+click('close');
+check(makeEl('#lab').innerHTML.includes('已死亡'), '榨取后实验台显示遗体');
 
 console.log(`\n${failures === 0 ? 'UI 测试全部通过 ✓' : `${failures} 项失败 ✗`}`);
 process.exit(failures ? 1 : 0);

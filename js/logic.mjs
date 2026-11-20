@@ -175,6 +175,19 @@ export function addResearch(state, dexId, amount) {
   return { unlocked: !before && after, percent: researchPercent(state, id) };
 }
 
+// 研究完成：冷却全解、写入图鉴记录、播报一条
+function completeResearch(state, mon, events) {
+  state.expCd = {};
+  if (!state.dexRecords) state.dexRecords = {};
+  state.dexRecords[mon.dexId] = {
+    day: Math.floor(state.day),
+    experiments: { ...(state.expLog[mon.dexId] || {}) },
+    // 这一路研究损耗掉的个体数
+    lost: researchLostCount(state, mon.dexId),
+  };
+  events.push({ type: 'research', msg: `${sp(mon.dexId).zh} 的研究完成，研究笔记已记录。` });
+}
+
 // 耐受度损耗：物理项吃防御、特殊项吃特防；结果对外隐藏
 // 除数 12 → 4 → 2 → 1.5 → 1：同样一次实验，损耗已经是最初的十二倍
 export function toleranceLoss(mon, experiment) {
@@ -340,8 +353,10 @@ export function newGame(seed = (Date.now() % 2147483647) || 7) {  const state = 
     candyPrice: CONFIG.candyBasePrice,
     mons: [],
     pens: Array.from({ length: CONFIG.startPens }, () => ({ a: null, b: null, breed: 0 })),
-    lab: Array.from({ length: CONFIG.labSlotsBase }, () => ({ uid: null })),
+    lab: Array.from({ length: CONFIG.labSlotsBase }, () => ({ uid: null, assistant: false, auto: false, spend: 0 })),
     eggs: [],
+    // 样本：物种绑定的一次性产物（[物种id]: 份数），终末榨取的产出
+    samples: {},
     orders: [],
     market: [],
     marketDay: 1,
@@ -1078,6 +1093,15 @@ function leaveLabCorpse(state, mon, cause) {
   return { ok: true, name, corpse: true, slot: idx };
 }
 
+// 实验台彻底空出：遗体处理掉之后调用，助手也随之释放
+function clearLabSlot(slot) {
+  slot.uid = null;
+  slot.corpse = null;
+  slot.assistant = false;
+  slot.auto = false;
+  slot.spend = 0;
+}
+
 export function labProcessCost(state, slotIdx) {
   const slot = state.lab[slotIdx];
   if (!slot) return 0;
@@ -1149,8 +1173,7 @@ export function processLabSlot(state, slotIdx) {
     msg = `已处理 ${name}，实验台空出`;
   }
   if (!corpse && tracked) logLabProcess(state, dexId, no, level);
-  slot.uid = null;
-  slot.corpse = null;
+  clearLabSlot(slot);
   return { ok: true, msg, cost, logged: !corpse && tracked };
 }
 
@@ -1163,6 +1186,9 @@ export function assignLab(state, slotIdx, uidMon) {
   if (penIndex(state, uidMon) !== -1) return { ok: false, msg: '请先从培育栏移出' };
   if (slot.uid || slot.corpse) return { ok: false, msg: '该实验台已被占用（含死亡个体）' };
   slot.uid = uidMon;
+  slot.assistant = false;
+  slot.auto = false;
+  slot.spend = 0;
   if (mon.tolerance == null) mon.tolerance = maxTolerance(mon);
   allocateMonNo(state, mon);
   return { ok: true, msg: `${sp(mon.dexId).zh} 被送进了实验室（只能实验或处理）` };
@@ -1179,6 +1205,109 @@ export function sendPenToLab(state, uidMon, slotIdx) {
   return assignLab(state, slotIdx, uidMon);
 }
 
+// ---------- 样本 / 终末榨取 / 实验室助手 ----------
+
+export const samplesOf = (state, dexId) => state.samples?.[dexId] || 0;
+
+function addSamples(state, dexId, n) {
+  if (!state.samples) state.samples = {};
+  state.samples[dexId] = (state.samples[dexId] || 0) + n;
+  return state.samples[dexId];
+}
+
+// 该物种的每条实验是否都亲手做过——助手接手的前提
+export function speciesHandled(state, dexId) {
+  const list = experimentsFor(dexId);
+  const log = state.expLog?.[dexId] || {};
+  return list.length > 0 && list.every((e) => (log[e.id] || 0) > 0);
+}
+
+// 助手数量：职级 3 / 4 / 5 各给 1 个，最多 3 个
+export const assistantSlots = (state) => clamp((state.rank ?? 0) - 2, 0, 3);
+export const busyAssistants = (state) => state.lab.filter((s) => s.assistant).length;
+export const freeAssistants = (state) => Math.max(0, assistantSlots(state) - busyAssistants(state));
+
+// 正态取样：两次均匀数做 Box–Muller，仍然走种子化 LCG，可复现
+function gauss(state) {
+  const u1 = Math.max(1e-9, random(state));
+  const u2 = random(state);
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+export function canFinalExtraction(state, slotIdx) {
+  const slot = state.lab[slotIdx];
+  if (slot?.corpse) return { ok: false, msg: '实验台上只剩遗体' };
+  const mon = slot?.uid ? monByUid(state, slot.uid) : null;
+  if (!mon) return { ok: false, msg: '实验台是空的' };
+  if (!isResearched(state, mon.dexId)) return { ok: false, msg: '这个物种还没研究完' };
+  if (state.gold < CONFIG.finalExtractionCost) return { ok: false, msg: '耗材不足' };
+  return { ok: true, mon, slot };
+}
+
+// 终末榨取：一次必死，产出样本（数量随当前耐受，正态分布）
+export function finalExtraction(state, slotIdx) {
+  const chk = canFinalExtraction(state, slotIdx);
+  if (!chk.ok) return chk;
+  const mon = chk.mon;
+  const dexId = mon.dexId;
+  const name = sp(dexId).zh;
+  const mu = Math.max(1, Math.max(0, mon.tolerance) / CONFIG.sampleMuDivisor);
+  const sd = Math.max(0.6, mu * CONFIG.sampleSigmaRatio);
+  const cap = Math.max(1, Math.ceil(mu * 2));
+  const amount = clamp(Math.round(mu + sd * gauss(state)), 1, cap);
+
+  state.gold -= CONFIG.finalExtractionCost;
+  state.stats.spent = (state.stats.spent || 0) + CONFIG.finalExtractionCost;
+  state.stats.experimentSpent = (state.stats.experimentSpent || 0) + CONFIG.finalExtractionCost;
+  addSpeciesSpend(state, dexId, 'exp', CONFIG.finalExtractionCost);
+  addSamples(state, dexId, amount);
+
+  const r = leaveLabCorpse(state, mon, 'extracted');
+  return { ok: true, amount, dexId, name, corpseSlot: r.slot, msg: `处置完成 · 样本已耗尽` };
+}
+
+// 助手一旦接手，就一直占用这台实验台，直到台子清空（遗体处理掉）
+export function canAssignAssistant(state, slotIdx) {
+  const slot = state.lab[slotIdx];
+  const mon = slot?.uid ? monByUid(state, slot.uid) : null;
+  if (!mon) return { ok: false, msg: '实验台是空的' };
+  if (isResearched(state, mon.dexId)) return { ok: false, msg: '这个物种已经研究完成' };
+  if (slot.assistant) return { ok: false, msg: '已经安排了助手' };
+  if (!speciesHandled(state, mon.dexId)) return { ok: false, msg: '这个物种还有实验没亲手做过' };
+  if (freeAssistants(state) <= 0) return { ok: false, msg: '没有空闲的助手' };
+  return { ok: true, mon, slot };
+}
+
+export function assignAssistant(state, slotIdx) {
+  const chk = canAssignAssistant(state, slotIdx);
+  if (!chk.ok) return chk;
+  chk.slot.assistant = true;
+  chk.slot.auto = true;
+  chk.slot.spend = 0;
+  logAssistant(state, chk.mon, 'assistant-start');
+  return { ok: true, msg: '助手接手了这台实验台' };
+}
+
+export function interruptAssistant(state, slotIdx) {
+  const slot = state.lab[slotIdx];
+  if (!slot?.assistant) return { ok: false, msg: '这台实验台没有助手' };
+  if (!slot.auto) return { ok: false, msg: '助手已经停下了' };
+  slot.auto = false;
+  const mon = slot.uid ? monByUid(state, slot.uid) : null;
+  if (mon) logAssistant(state, mon, 'assistant-takeover');
+  return { ok: true, msg: '你接过了这台实验台' };
+}
+
+export function resumeAssistant(state, slotIdx) {
+  const slot = state.lab[slotIdx];
+  if (!slot?.assistant) return { ok: false, msg: '这台实验台没有助手' };
+  const mon = slot.uid ? monByUid(state, slot.uid) : null;
+  if (!mon) return { ok: false, msg: '实验台是空的' };
+  if (isResearched(state, mon.dexId)) return { ok: false, msg: '这个物种已经研究完成' };
+  slot.auto = true;
+  return { ok: true, msg: '助手重新接手' };
+}
+
 export const RELEASE_TEXT = {
   exhausted: '耗尽了耐受度，倒下了',
   overload: '没能承受住实验，死在了实验台上',
@@ -1192,7 +1321,7 @@ export function releaseMon(state, uidMon, reason = 'manual') {
   if (!mon) return { ok: false, msg: '找不到宝可梦' };
   const name = sp(mon.dexId).zh;
   state.mons = state.mons.filter((m) => m.uid !== uidMon);
-  for (const slot of state.lab) if (slot.uid === uidMon) slot.uid = null;
+  for (const slot of state.lab) if (slot.uid === uidMon) clearLabSlot(slot);
   detachFromPens(state, uidMon);
   state.stats.released = (state.stats.released || 0) + 1;
   const msg = `${name} ${RELEASE_TEXT[reason] || RELEASE_TEXT.manual}`;
@@ -1240,6 +1369,21 @@ function logLabProcess(state, dexId, no, level) {
   return true;
 }
 
+// 助手节点：只记「安排助手」与「你决定亲自动手」两个瞬间，不逐条记进度
+function logAssistant(state, mon, kind) {
+  if (!state.expJournal) state.expJournal = [];
+  state.expJournal.unshift({
+    day: Math.floor(state.day),
+    no: mon.no,
+    dexId: mon.dexId,
+    level: mon.level,
+    expId: kind,
+    expName: kind === 'assistant-start' ? '安排助手对其进行实验' : '你决定亲自动手',
+    survived: true,
+  });
+  if (state.expJournal.length > 500) state.expJournal.length = 500;
+}
+
 function logLabDeath(state, mon, cause) {
   // 该物种研究已满：不再往研究笔记里写任何实验日志
   if (isResearched(state, mon.dexId)) return;
@@ -1269,11 +1413,9 @@ export function startExperiment(state, uidMon, experimentId) {
   const exp = expList.find((e) => e.id === experimentId);
   if (!exp) return { ok: false, msg: '没有这个实验' };
 
-  // 该物种研究已满：只允许继续做最伤身的那种实验
-  const locked = lockedExperimentId(state, mon);
-  if (locked && locked !== exp.id) {
-    const only = expList.find((e) => e.id === locked);
-    return { ok: false, msg: `该物种已研究完成，只有「${only.name}」还能记录到新数据` };
+  // 该物种研究已满：实验结束，只剩终末榨取
+  if (isResearched(state, mon.dexId)) {
+    return { ok: false, msg: '这个物种已经研究完成，只剩终末榨取' };
   }
 
   // 冷却中（按个体 + 实验记录，真实秒）；物种研究 100% 后不再受冷却限制
@@ -1327,18 +1469,7 @@ export function startExperiment(state, uidMon, experimentId) {
   const researchCompleted = !!res.unlocked;
   const name = sp(mon.dexId).zh;
   const events = [];
-  if (res.unlocked) {
-    // 研究笔记条目完成：冷却全部解除，之后不再有实验 CD
-    state.expCd = {};
-    if (!state.dexRecords) state.dexRecords = {};
-    state.dexRecords[mon.dexId] = {
-      day: Math.floor(state.day),
-      experiments: { ...(state.expLog[mon.dexId] || {}) },
-      // 这一路研究损耗掉的个体数
-      lost: researchLostCount(state, mon.dexId),
-    };
-    events.push({ type: 'research', msg: `${name} 的研究完成，研究笔记已记录。` });
-  }
+  if (res.unlocked) completeResearch(state, mon, events);
   // 高损耗实验：harsh 档，或损耗超过自身耐受上限一定比例，会吓到同实验室的其他个体
   const maxTol = Math.max(1, maxTolerance(mon));
   if (exp.tier === 'harsh' || loss / maxTol >= CONFIG.threatLossRatio) {
@@ -1663,6 +1794,54 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
     if (mon && mon.tolerance > CONFIG.labStruggleThreshold) {
       mon.tolerance = Math.max(0, mon.tolerance - CONFIG.labStrugglePerDay * dtDays);
       if (mon.tolerance <= 0) bumpResearchLoss(state, mon.dexId);
+    }
+  }
+
+  // 实验室助手：连续 tick 推进（不模拟离散实验，不跑冷却）
+  if (realSeconds > 0) {
+    for (const slot of state.lab) {
+      if (!slot.auto || !slot.uid) continue;
+      const mon = monByUid(state, slot.uid);
+      if (!mon) {
+        slot.auto = false;
+        continue;
+      }
+      if (isResearched(state, mon.dexId)) {
+        slot.auto = false;
+        continue;
+      }
+
+      // 耗材：零头累加，攒够整数再扣；钱不够就这一 tick 不推进（助手仍占用）
+      slot.spend = (slot.spend || 0) + CONFIG.assistantGoldPerSec * realSeconds;
+      const whole = Math.floor(slot.spend);
+      if (whole > 0) {
+        if (state.gold < whole) {
+          slot.paused = 'gold';
+          continue;
+        }
+        state.gold -= whole;
+        state.stats.spent = (state.stats.spent || 0) + whole;
+        state.stats.experimentSpent = (state.stats.experimentSpent || 0) + whole;
+        addSpeciesSpend(state, mon.dexId, 'exp', whole);
+        slot.spend -= whole;
+      }
+      slot.paused = null;
+
+      const res = addResearch(state, mon.dexId, CONFIG.assistantProgressPerSec * realSeconds);
+      mon.tolerance = Math.max(0, mon.tolerance - CONFIG.assistantTolerancePerSec * realSeconds);
+
+      if (res.unlocked) {
+        completeResearch(state, mon, events);
+        slot.auto = false;
+        continue;
+      }
+      if (mon.tolerance <= 0) {
+        bumpResearchLoss(state, mon.dexId);
+        logLabDeath(state, mon, 'exhausted');
+        leaveLabCorpse(state, mon, 'exhausted');
+        slot.auto = false;
+        events.push({ type: 'warn', msg: `${sp(mon.dexId).zh} 在实验台上耗尽了耐受度，倒了下去` });
+      }
     }
   }
 
