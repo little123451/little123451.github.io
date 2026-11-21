@@ -1378,7 +1378,7 @@ function closeModal() {
 function modalShell(title, body, extra = '') {
   return `<div class="modal-card">
     <div class="modal-head"><h3>${title}</h3>${extra}<button class="ghost close" data-act="close">关闭</button></div>
-    ${body}
+    <div class="modal-body">${body}</div>
   </div>`;
 }
 
@@ -1683,10 +1683,12 @@ function labExpModalHtml(uid) {
   if (pendingExp && pendingExp.uid === uid) {
     return `<div class="modal-card">
       <div class="modal-head"><h3>正在 ${pendingExp.expName}……</h3></div>
-      <div class="exp-loading">
-        <div class="exp-loading-icon">🧪</div>
-        <p class="exp-loading-desc">${esc(pendingExp.desc)}</p>
-        <div class="bar exp-loadbar"><i id="exp-progress" style="width:0%"></i></div>
+      <div class="modal-body">
+        <div class="exp-loading">
+          <div class="exp-loading-icon">🧪</div>
+          <p class="exp-loading-desc">${esc(pendingExp.desc)}</p>
+          <div class="bar exp-loadbar"><i id="exp-progress" style="width:0%"></i></div>
+        </div>
       </div>
     </div>`;
   }

@@ -286,6 +286,8 @@ click('close');
 
 click('open-picker', { pen: '1', slot: 'a' });
 check(makeEl('#modal').innerHTML.includes('选择宝可梦'), '培育栏空位仍可打开选择弹窗');
+// 弹窗正文必须包在 .modal-body 里：滚动区在这一层，标题才能固定、内容再长也能滑
+check(makeEl('#modal').innerHTML.includes('class="modal-body"'), '弹窗正文包在独立滚动区里');
 check(!makeEl('#modal').innerHTML.includes('空闲'), '栏位选择列表不显示空闲状态');
 check(makeEl('#modal').innerHTML.includes('data-act="assign"'), '选择弹窗仍能放入栏位');
 check(!makeEl('#modal').innerHTML.includes(`data-uid="${state.mons[0].uid}"`), '已在培育栏的个体不出现在选择列表');

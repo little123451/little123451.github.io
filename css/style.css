@@ -1770,6 +1770,7 @@ p {
 .dex-records {
   display: grid;
   gap: 5px;
+  max-height: 40vh;
   max-height: 40dvh;
   overflow: auto;
 }
@@ -1904,10 +1905,12 @@ p {
 .modal-card {
   width: 100%;
   max-width: 760px;
-  max-height: 92dvh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
+  /* 高度上限用百分比，跟着全屏遮罩的高度走：不依赖 dvh/vh，
+     不认识单位的老浏览器也不会把整条声明丢掉，抽屉永远留在屏幕里。 */
+  max-height: 92%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 16px 16px calc(18px + env(safe-area-inset-bottom));
   border-radius: 20px 20px 0 0;
   border: 1px solid #2a3f60;
@@ -1915,6 +1918,15 @@ p {
   background: linear-gradient(180deg, #152238, #0d1728);
   box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.6);
   animation: sheetUp 0.2s ease both;
+}
+
+/* 弹窗正文自带滚动区：标题固定，内容再长也只在这里滚 */
+.modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   overscroll-behavior: contain;
 }
 
@@ -1924,9 +1936,7 @@ p {
 }
 
 .modal-head {
-  position: sticky;
-  top: -16px;
-  z-index: 2;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2556,6 +2566,7 @@ p {
   }
 
   .app {
+    height: min(900px, calc(100vh - 36px));
     height: min(900px, calc(100dvh - 36px));
     border: 1px solid var(--line);
     border-radius: 26px;
