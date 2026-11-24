@@ -289,3 +289,26 @@
 - backlog #1 / B1：畸形体立绘按个体 uid 独立生成。
 - backlog #2 / B2：清理「争斗」残留（§25.3）。
 - `design/breeding.md` §20.3 已标 `Accepted, not implemented`，原文「同一对父母同一副面孔」标 Superseded。
+
+---
+
+## 28. 实施登记 · B1 畸形体独立形态（2026-11-24）
+
+> 类型：实施登记 ｜ 代码：`js/ui.mjs`、`tools/test-ui.mjs`
+
+### 28.1 改动
+
+| 项 | 内容 |
+|---|---|
+| `mutantLook(mon)` | 按个体 `uid` 哈希出 seed、位移 8–16px、baseFrequency 0.022–0.040 / 0.040–0.070、色相 80–200°、饱和 0.60–0.85、对比 1.10–1.35 |
+| `ensureMutantFilter(look)` | 用上述参数建 SVG filter，id 为 `warp-<uid>`，按 uid 缓存 |
+| `filterParts(mon)` | 色相 / 饱和度 / 对比度改由 `look` 提供，不再写死 |
+
+### 28.2 验收
+
+- `test-ui`：两只畸形体的 `style.filter` 不同，且同一只多次渲染一致。
+- `npm test` 全绿。
+
+### 28.3 收尾
+
+- `spec.md` §3 立绘行已更新；`design/breeding.md` §20.3 状态改为「已实施」；backlog #1 / B1 已删行。

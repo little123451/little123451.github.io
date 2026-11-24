@@ -1018,9 +1018,18 @@ check(!labMutHtml.includes('data-act="open-exp"'), '畸形体没有实验按钮'
 check(labMutHtml.includes('终末榨取'), '畸形体直接可终末榨取');
 check((makeEl('#lab-0-img').style.filter || '').includes('warp-'), '实验室畸形体保持湍流贴图');
 
+// 每个畸形体一套独立形态
+const mutB = L.createMon(mutUi, 143, 6, { gender: 'm', mutant: true, vigor: 0.5, sterile: true, mix: [143, 10] });
+mutUi.mons = [mutA, normA, mutB];
+L.assignLab(mutUi, 1, mutB.uid);
+UI.render();
+const mutF0 = makeEl('#lab-0-img').style.filter || '';
+const mutF1 = makeEl('#lab-1-img').style.filter || '';
+check(mutF0.includes('warp-') && mutF1.includes('warp-') && mutF0 !== mutF1, '不同畸形体各有独立的扭曲形态');
+
 // 畸形体不出现在培育栏选择器
 const mutPickMon = L.createMon(mutUi, 143, 5, { gender: 'f', mutant: true, vigor: 0.5, sterile: true, mix: [143, 10] });
-mutUi.mons = [mutA, normA, mutPickMon];
+mutUi.mons = [mutA, normA, mutB, mutPickMon];
 UI.render();
 click('open-picker', { pen: '1', slot: 'a' });
 check(!makeEl('#modal').innerHTML.includes(mutPickMon.uid), '畸形体不出现在培育栏选择器');

@@ -20,7 +20,8 @@ function toleranceGray(mon) {
 function filterParts(mon) {
   const parts = [];
   if (mon?.mutant) {
-    parts.push(mutantFilterUrl(mon), 'hue-rotate(140deg)', 'saturate(.72)', 'contrast(1.2)');
+    const look = mutantLook(mon);
+    parts.push(mutantFilterUrl(mon), `hue-rotate(${look.hue}deg)`, `saturate(${look.sat})`, `contrast(${look.contrast})`);
   }
   const g = toleranceGray(mon);
   if (g > 0) parts.push(`grayscale(${g.toFixed(3)})`);
@@ -32,38 +33,65 @@ const spriteFilter = (mon) => {
   return parts.length ? ` style="filter:${parts.join(' ')}"` : '';
 };
 
-// 畸形体：按父母物种哈希一个湍流位移滤镜，同一对永远长得一样
-const mutantFilters = new Map();
-function mutantFilterUrl(mon) {
-  const mix = mon?.mix || [mon?.dexId ?? 0, 0];
-  const seed = (((mix[0] || 0) * 73856093) ^ ((mix[1] || 0) * 19349663)) >>> 0;
-  const id = `warp-${mix[0] || 0}-${mix[1] || 0}`;
-  if (!mutantFilters.has(id)) {
-    mutantFilters.set(id, true);
-    const defs = document.getElementById('fx-defs');
-    if (defs && !document.getElementById(id)) {
-      const NS = 'http://www.w3.org/2000/svg';
-      const f = document.createElementNS(NS, 'filter');
-      f.setAttribute('id', id);
-      f.setAttribute('x', '-35%'); f.setAttribute('y', '-35%');
-      f.setAttribute('width', '170%'); f.setAttribute('height', '170%');
-      const t = document.createElementNS(NS, 'feTurbulence');
-      t.setAttribute('type', 'fractalNoise');
-      t.setAttribute('baseFrequency', '0.03 0.06');
-      t.setAttribute('numOctaves', '3');
-      t.setAttribute('seed', String(seed % 997));
-      t.setAttribute('result', 'n');
-      const d = document.createElementNS(NS, 'feDisplacementMap');
-      d.setAttribute('in', 'SourceGraphic');
-      d.setAttribute('in2', 'n');
-      d.setAttribute('scale', '12');
-      d.setAttribute('xChannelSelector', 'R');
-      d.setAttribute('yChannelSelector', 'G');
-      f.append(t, d);
-      defs.append(f);
-    }
+// 畸形体：每个个体按 uid 派生自己的一套形态参数——同一只永远一样，彼此互不相同
+const mutantLooks = new Map();
+function hashText(text) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
   }
-  return `url(#${id})`;
+  return h;
+}
+function mutantLook(mon) {
+  const key = String(mon?.uid ?? `mix-${mon?.mix?.[0] ?? 0}-${mon?.mix?.[1] ?? 0}`);
+  const hit = mutantLooks.get(key);
+  if (hit) return hit;
+  let h = hashText(key);
+  const next = () => {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+    return h / 4294967296;
+  };
+  const look = {
+    id: `warp-${key}`,
+    seed: Math.floor(next() * 997),
+    scale: (8 + next() * 8).toFixed(1),
+    baseX: (0.022 + next() * 0.018).toFixed(3),
+    baseY: (0.04 + next() * 0.03).toFixed(3),
+    hue: Math.round(80 + next() * 120),
+    sat: (0.6 + next() * 0.25).toFixed(2),
+    contrast: (1.1 + next() * 0.25).toFixed(2),
+  };
+  mutantLooks.set(key, look);
+  return look;
+}
+function ensureMutantFilter(look) {
+  const defs = document.getElementById('fx-defs');
+  if (!defs || document.getElementById(look.id)) return;
+  const NS = 'http://www.w3.org/2000/svg';
+  const f = document.createElementNS(NS, 'filter');
+  f.setAttribute('id', look.id);
+  f.setAttribute('x', '-35%'); f.setAttribute('y', '-35%');
+  f.setAttribute('width', '170%'); f.setAttribute('height', '170%');
+  const t = document.createElementNS(NS, 'feTurbulence');
+  t.setAttribute('type', 'fractalNoise');
+  t.setAttribute('baseFrequency', `${look.baseX} ${look.baseY}`);
+  t.setAttribute('numOctaves', '3');
+  t.setAttribute('seed', String(look.seed));
+  t.setAttribute('result', 'n');
+  const d = document.createElementNS(NS, 'feDisplacementMap');
+  d.setAttribute('in', 'SourceGraphic');
+  d.setAttribute('in2', 'n');
+  d.setAttribute('scale', look.scale);
+  d.setAttribute('xChannelSelector', 'R');
+  d.setAttribute('yChannelSelector', 'G');
+  f.append(t, d);
+  defs.append(f);
+}
+function mutantFilterUrl(mon) {
+  const look = mutantLook(mon);
+  ensureMutantFilter(look);
+  return `url(#${look.id})`;
 }
 const applyToleranceFilter = (img, mon) => {
   if (!img) return;
