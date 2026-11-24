@@ -884,7 +884,7 @@ UI.render();
 // 蛋组未知：不亮
 click('open-picker', { pen: '0', slot: 'b' });
 check(!makeEl('#modal').innerHTML.includes('egg-match'), '蛋组未识别时不给绿框');
-check(makeEl('#modal').innerHTML.includes('kin-badge') && makeEl('#modal').innerHTML.includes('近亲'), '选择器标出近亲');
+check(makeEl('#modal').innerHTML.includes('kin-badge') && makeEl('#modal').innerHTML.includes('女儿'), '选择器用亲属称呼标出关系');
 click('close');
 
 // 蛋组已识别：与栏位内那只共享蛋组的候选给绿框
@@ -900,11 +900,10 @@ check(dauBtn.includes('egg-match'), '同蛋组的候选带绿框');
 check(!otherBtn.includes('egg-match'), '不同蛋组的候选不带绿框');
 click('close');
 
-// 个体详情：近亲后代 · 第 N 代
+// 个体详情：不再显示血缘信息
 click('open-mon', { uid: bKinDau.uid });
 const kinDetail = makeEl('#modal').innerHTML;
-check(kinDetail.includes('近亲后代'), '详情显示近亲后代');
-check(kinDetail.includes('第 1 代'), '详情显示世代');
+check(!kinDetail.includes('近亲后代') && !kinDetail.includes('血缘'), '详情不再显示血缘信息');
 click('close');
 
 // 个体值：研究 100% 才显示

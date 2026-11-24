@@ -1551,6 +1551,105 @@ check(specialRound.mons.find((m) => m.uid === shinyMon.uid)?.sterile === true, '
 // 市场与数值
 check(L.sellPrice(a) > 0 && L.sellPrice(a) < L.monValue(a), '售价低于估值');
 
+// ---------- 亲属称呼（配合父方 / 母方登记） ----------
+const kinS = L.newGame(4310);
+const mkKin = (gender) => L.createMon(kinS, 16, 30, { gender });
+const regKin = (m, f, mo) => {
+  kinS.lineage[m.uid] = { f: f ? f.uid : null, m: mo ? mo.uid : null };
+};
+const kGf = mkKin('m');
+const kGm = mkKin('f');
+const kMgf = mkKin('m');
+const kMgm = mkKin('f');
+const knDad = mkKin('m');
+const knMom = mkKin('f');
+regKin(knDad, kGf, kGm);
+regKin(knMom, kMgf, kMgm);
+const kMe = mkKin('f');
+kMe.ancestors = {
+  [knDad.uid]: 1, [knMom.uid]: 1,
+  [kGf.uid]: 2, [kGm.uid]: 2, [kMgf.uid]: 2, [kMgm.uid]: 2,
+};
+regKin(kMe, knDad, knMom);
+check(L.kinLabel(kinS, kMe, knDad) === '父亲', '称呼：父亲');
+check(L.kinLabel(kinS, knDad, kMe) === '女儿', '称呼：女儿');
+check(L.kinLabel(kinS, kMe, kGf) === '祖父', '称呼：祖父');
+
+const kBro = mkKin('m');
+kBro.ancestors = { [knDad.uid]: 1, [knMom.uid]: 1 };
+regKin(kBro, knDad, knMom);
+check(L.kinLabel(kinS, kMe, kBro) === '弟弟', '称呼：弟弟');
+
+const kHalf = mkKin('m');
+kHalf.ancestors = { [knDad.uid]: 1 };
+regKin(kHalf, knDad, null);
+check(L.kinLabel(kinS, kMe, kHalf) === '半弟', '称呼：半弟');
+
+const kUncle = mkKin('m');
+kUncle.ancestors = { [kGf.uid]: 1, [kGm.uid]: 1 };
+regKin(kUncle, kGf, kGm);
+check(L.kinLabel(kinS, kMe, kUncle) === '叔叔', '称呼：叔叔');
+
+const kAunt = mkKin('f');
+kAunt.ancestors = { [kGf.uid]: 1, [kGm.uid]: 1 };
+regKin(kAunt, kGf, kGm);
+check(L.kinLabel(kinS, kMe, kAunt) === '姑姑', '称呼：姑姑');
+
+const kMomBro = mkKin('m');
+kMomBro.ancestors = { [kMgf.uid]: 1, [kMgm.uid]: 1 };
+regKin(kMomBro, kMgf, kMgm);
+check(L.kinLabel(kinS, kMe, kMomBro) === '舅舅', '称呼：舅舅');
+
+const kSis = mkKin('f');
+kSis.ancestors = { [knDad.uid]: 1, [knMom.uid]: 1 };
+regKin(kSis, knDad, knMom);
+const kNephew = mkKin('m');
+kNephew.ancestors = { [kBro.uid]: 1, [knDad.uid]: 2, [knMom.uid]: 2 };
+regKin(kNephew, kBro, null);
+check(L.kinLabel(kinS, kMe, kNephew) === '侄子', '称呼：侄子');
+
+const kNiece = mkKin('f');
+kNiece.ancestors = { [kSis.uid]: 1, [knDad.uid]: 2, [knMom.uid]: 2 };
+regKin(kNiece, null, kSis);
+check(L.kinLabel(kinS, kMe, kNiece) === '外甥女', '称呼：外甥女');
+
+const kCousinT = mkKin('m');
+kCousinT.ancestors = { [kUncle.uid]: 1, [kGf.uid]: 2, [kGm.uid]: 2 };
+regKin(kCousinT, kUncle, null);
+check(L.kinLabel(kinS, kMe, kCousinT) === '堂弟', '称呼：堂弟');
+
+const kCousinM = mkKin('m');
+kCousinM.ancestors = { [kAunt.uid]: 1, [kGf.uid]: 2, [kGm.uid]: 2 };
+regKin(kCousinM, null, kAunt);
+check(L.kinLabel(kinS, kMe, kCousinM) === '表弟', '称呼：表弟');
+
+// 伯伯：父亲的哥哥（uid 先后当长幼）
+const kinS2 = L.newGame(4311);
+const mkKin2 = (gender) => L.createMon(kinS2, 16, 30, { gender });
+const regKin2 = (m, f, mo) => {
+  kinS2.lineage[m.uid] = { f: f ? f.uid : null, m: mo ? mo.uid : null };
+};
+const k2Gf = mkKin2('m');
+const k2Gm = mkKin2('f');
+const k2Uncle = mkKin2('m');
+k2Uncle.ancestors = { [k2Gf.uid]: 1, [k2Gm.uid]: 1 };
+regKin2(k2Uncle, k2Gf, k2Gm);
+const k2Dad = mkKin2('m');
+regKin2(k2Dad, k2Gf, k2Gm);
+const k2Me = mkKin2('m');
+k2Me.ancestors = { [k2Dad.uid]: 1, [k2Gf.uid]: 2, [k2Gm.uid]: 2 };
+regKin2(k2Me, k2Dad, null);
+check(L.kinLabel(kinS2, k2Me, k2Uncle) === '伯伯', '称呼：伯伯');
+
+// 三代以外 / 无关系
+const kFarG = mkKin('m');
+kMe.ancestors[kFarG.uid] = 3;
+const kFar = mkKin('m');
+kFar.ancestors = { [kFarG.uid]: 3 };
+check(L.kinLabel(kinS, kMe, kFar) === '远房表亲', '称呼：远房表亲');
+const kStranger = mkKin('m');
+check(L.kinLabel(kinS, kMe, kStranger) === null, '称呼：无关系不标');
+
 // ---------- 畸形体：出口与实验室 ----------
 const mut = L.newGame(4400);
 const mutMon = L.createMon(mut, 21, 20, { gender: 'f', mutant: true, vigor: 0.5, sterile: true, mix: [21, 74] });

@@ -307,10 +307,10 @@ export function createMon(state, dexId, level = 1, opts = {}) {
   const ability = opts.ability ?? pickOne(state, s.abilities);
   const shiny = opts.shiny ?? random(state) < CONFIG.shinyChance;
   const sterile = opts.sterile ?? (gender !== 'x' && random(state) < CONFIG.sterileChance);
-  // 体质系数：外血 / 正常 = 1；近亲后代逐代 ×0.85，下限 0.5
+  // 体质系数：外血 / 正常 = 1；近亲后代按档位乘数，下限 0.5
   const vigor = opts.vigor ?? 1;
-  return {
-    uid: uid(state),
+  const mon = {
+    uid: opts.uid ?? uid(state),
     no: null,
     dexId: Number(dexId),
     level,
@@ -323,8 +323,11 @@ export function createMon(state, dexId, level = 1, opts = {}) {
     ivs,
     // 体质系数：乘在耐受上限上，不单独显示
     vigor,
-    // 近亲后代标记（出生时写入，用于详情页的“近亲后代 · 第 N 代”）
+    // 近亲后代标记（出生时写入）
     inbred: !!opts.inbred,
+    // 父方 / 母方：亲属称呼判定父系母系用；百变怪 / 无性别一侧为 null
+    fatherUid: opts.fatherUid ?? null,
+    motherUid: opts.motherUid ?? null,
     // 出厂即满值；雄性上限是同物种、同等级雌性的 1.25 倍
     tolerance: Math.max(1, Math.round(toleranceCap(level, gender) * vigor)),
     // 血统：祖先 uid → 距离我的代数（市场买来的蛋 / 初始个体都为空）
@@ -340,6 +343,15 @@ export function createMon(state, dexId, level = 1, opts = {}) {
     // 预留：出生日，目前没有读取方（可为将来的年龄 / 世代展示提供依据）
     born: Math.floor(state.day),
   };
+  rememberLineage(state, mon);
+  return mon;
+}
+
+// 血统登记：uid → { 父, 母 }。个体被卖掉 / 死亡后仍然保留，亲属称呼靠它判父系母系。
+function rememberLineage(state, mon) {
+  if (!mon || (!mon.fatherUid && !mon.motherUid)) return;
+  if (!state.lineage) state.lineage = {};
+  state.lineage[mon.uid] = { f: mon.fatherUid ?? null, m: mon.motherUid ?? null };
 }
 
 function allocateMonNo(state, mon) {
@@ -379,6 +391,8 @@ export function newGame(seed = (Date.now() % 2147483647) || 7) {  const state = 
     dex: [],
     // 蛋组知识：{ 物种id: ['已确认的蛋组'] }
     eggKnown: {},
+    // 血统登记：{ uid: { f: 父方uid, m: 母方uid } }，个体离队后仍保留
+    lineage: {},
     // 曾经孵出过的物种（孵化反馈分级用）：{ 物种id: 次数 }
     everHatched: {},
     // 已完成研究笔记的研究记录：{ 物种id: { day, experiments } }
@@ -703,6 +717,99 @@ export function kinTier(a, b) {
 
 export const isKin = (a, b) => kinTier(a, b).multiplier != null;
 
+// ---------- 亲属称呼 ----------
+// 只在配对选择器里展示，不给档位与乘数（spec §16）。需要 state.lineage 判父系 / 母系。
+const uidNum = (u) => Number(String(u ?? '').replace(/\D/g, '')) || 0;
+const byGender = (g, male, female, neutral) => (g === 'm' ? male : g === 'f' ? female : neutral);
+
+function ancestorLabel(depth, gender) {
+  if (depth <= 1) return byGender(gender, '父亲', '母亲', '亲代');
+  if (depth === 2) return byGender(gender, '祖父', '祖母', '祖辈');
+  if (depth === 3) return byGender(gender, '曾祖父', '曾祖母', '曾祖辈');
+  return '先祖';
+}
+
+function descendantLabel(depth, gender) {
+  if (depth <= 1) return byGender(gender, '儿子', '女儿', '子代');
+  if (depth === 2) return byGender(gender, '孙子', '孙女', '孙辈');
+  if (depth === 3) return byGender(gender, '曾孙', '曾孙女', '曾孙辈');
+  return '后代';
+}
+
+// 这一位的父 / 母里，谁是 grandUid 的孩子；用来判父系 / 母系
+function parentSide(state, mon, grandUid) {
+  const link = state?.lineage?.[mon?.uid];
+  if (!link) return null;
+  if (link.f && state.lineage[link.f] && (state.lineage[link.f].f === grandUid || state.lineage[link.f].m === grandUid)) {
+    return 'father';
+  }
+  if (link.m && state.lineage[link.m] && (state.lineage[link.m].f === grandUid || state.lineage[link.m].m === grandUid)) {
+    return 'mother';
+  }
+  return null;
+}
+
+// a 是栏位里那只，b 是候选。返回称呼，null = 三代以外 / 没有关系。
+export function kinLabel(state, a, b) {
+  if (!a || !b || a.uid === b.uid) return null;
+  const A = a.ancestors || {};
+  const B = b.ancestors || {};
+  if (A[b.uid] != null) return ancestorLabel(A[b.uid], b.gender);
+  if (B[a.uid] != null) return descendantLabel(B[a.uid], b.gender);
+
+  let best = null;
+  for (const u of Object.keys(A)) {
+    if (B[u] == null) continue;
+    const da = A[u];
+    const db = B[u];
+    const d = Math.max(da, db);
+    if (!best || d < best.d || (d === best.d && da + db < best.sum)) {
+      best = { grand: u, da, db, d, sum: da + db };
+    }
+  }
+  if (!best || best.d >= 4) return null;
+
+  const { grand, da, db, d } = best;
+  const senior = uidNum(b.uid) < uidNum(a.uid);
+
+  if (d === 1) {
+    const sharedParents = Object.keys(A).filter((u) => A[u] === 1 && B[u] === 1).length;
+    if (sharedParents < 2) {
+      return byGender(b.gender, senior ? '半兄' : '半弟', senior ? '半姐' : '半妹', '半同胞');
+    }
+    return byGender(b.gender, senior ? '哥哥' : '弟弟', senior ? '姐姐' : '妹妹', '同胞');
+  }
+
+  if (d === 2 && da !== db) {
+    if (db === 1) {
+      // 候选是 a 的父辈旁系
+      const side = parentSide(state, a, grand);
+      if (side === 'father') {
+        const fatherUid = state?.lineage?.[a.uid]?.f;
+        const elder = fatherUid != null && uidNum(b.uid) < uidNum(fatherUid);
+        return byGender(b.gender, elder ? '伯伯' : '叔叔', '姑姑', '长辈');
+      }
+      if (side === 'mother') return byGender(b.gender, '舅舅', '阿姨', '长辈');
+      return byGender(b.gender, '叔叔', '阿姨', '长辈');
+    }
+    // 候选是 a 的子辈旁系：b 的父 / 母是 a 的兄弟姐妹
+    const side = parentSide(state, b, grand);
+    if (side === 'mother') return byGender(b.gender, '外甥', '外甥女', '晚辈');
+    return byGender(b.gender, '侄子', '侄女', '晚辈');
+  }
+
+  if (d === 2) {
+    const aSide = parentSide(state, a, grand);
+    const bSide = parentSide(state, b, grand);
+    if (aSide === 'father' && bSide === 'father') {
+      return byGender(b.gender, senior ? '堂兄' : '堂弟', senior ? '堂姐' : '堂妹', '堂亲');
+    }
+    return byGender(b.gender, senior ? '表哥' : '表弟', senior ? '表姐' : '表妹', '表亲');
+  }
+
+  return '远房表亲';
+}
+
 // 子代体质：近亲 = min(双亲) × 档位乘数（下限 0.5）；非近亲 = 均值 + 0.2 杂种优势（封顶 1）
 export function childVigor(a, b, multiplier) {
   const va = a?.vigor ?? 1;
@@ -730,6 +837,8 @@ function createEgg(state, dexId, parents, source = BRED_SOURCE, mutant = false) 
   }
   const nature = parents ? pickOne(state, [parents[0].nature, parents[1].nature]) : pickOne(state, DEX.natures).id;
   const total = hatchDays(state, dexId);
+  const father = parents?.find((p) => p?.gender === 'm') ?? null;
+  const mother = parents?.find((p) => p?.gender === 'f') ?? null;
   const egg = {
     uid: uid(state),
     dexId,
@@ -741,6 +850,9 @@ function createEgg(state, dexId, parents, source = BRED_SOURCE, mutant = false) 
     ability: pickOne(state, s.abilities),
     // 血统跟着蛋 → 个体走完整个生命周期
     ...lineageOf(parents),
+    // 父方 / 母方：亲属称呼判定父系母系用；百变怪 / 无性别一侧为 null
+    fatherUid: father?.uid ?? null,
+    motherUid: mother?.uid ?? null,
     // 体质系数与“近亲后代”标记，同样跟着蛋 → 个体
     vigor,
     inbred: !mutant && tier.multiplier != null,
@@ -751,6 +863,7 @@ function createEgg(state, dexId, parents, source = BRED_SOURCE, mutant = false) 
     // 来源跟着蛋进来，孵出后继续跟着个体
     source: source || BRED_SOURCE,
   };
+  rememberLineage(state, egg);
   state.eggs.push(egg);
   return egg;
 }
@@ -759,6 +872,7 @@ function hatch(state, egg, events) {
   const dexId = egg.dexId;
   const s = sp(dexId);
   const mon = createMon(state, dexId, 1, {
+    uid: egg.uid,
     ivs: egg.ivs,
     nature: egg.nature,
     gender: egg.gender,
@@ -770,10 +884,11 @@ function hatch(state, egg, events) {
     mutant: !!egg.mutant,
     mix: egg.mix || null,
     sterile: egg.mutant ? true : undefined,
+    fatherUid: egg.fatherUid ?? null,
+    motherUid: egg.motherUid ?? null,
     origin: 'egg',
     source: egg.source,
   });
-  mon.uid = egg.uid;
   state.mons.push(mon);
   // 孵出后默认留在围栏（闲置区），不自动塞进培育栏
   state.stats.hatched += 1;

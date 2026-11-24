@@ -1,7 +1,7 @@
 // 规则数据层：数值、文案、静态表与纯函数。
 // 这里不依赖运行时状态，也不 import 逻辑层；调参优先改这个文件。
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export const CONFIG = {
   secondsPerDay: 12,
@@ -96,7 +96,7 @@ export const CONFIG = {
   assistantProgressPerSec: 0.5,
   assistantTolerancePerSec: 3.86,
   assistantGoldPerSec: 6.4,
-  saveKey: 'rocket-simulator-save-v6',
+  saveKey: 'rocket-simulator-save-v7',
 };
 
 export const STAT_KEYS = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];

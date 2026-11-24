@@ -10,7 +10,7 @@
 |---|---|
 | 时间 | 1 游戏日 = 12 秒真实时间（`CONFIG.secondsPerDay`）；顶栏可切倍速 |
 | 自动暂停 | **只有「研究笔记」页暂停**（`AUTO_PAUSE_TABS = ['dex']`）；实验室不暂停 |
-| 存档 | `SAVE_VERSION = 6`，key `rocket-simulator-save-v6`；**不写迁移**，版本不符直接丢弃 |
+| 存档 | `SAVE_VERSION = 7`，key `rocket-simulator-save-v7`；**不写迁移**，版本不符直接丢弃 |
 | 开局 | 1800 资金、12 颗糖果、3 个培育栏；波波 ♂ + 两只无亲缘烈雀 ♀ |
 | 等级 | 上限 60（`CONFIG.maxLevel`） |
 
@@ -268,4 +268,4 @@ IV 0–31 仍参与能力值计算，但**不展示**；繁育取双亲均值 ±
 | 畸形体的判定 | 不说「这是跨蛋组生的」，只表现为不育、体质弱、卖价低 | `logic.createEgg` |
 | 闪光 / 不孕不育概率 | 只显示结果（徽章 / 光晕），不写概率 | `rules.CONFIG.shinyChance` |
 | 繁育遗传规则 | 不解释 IV 均值与性格继承 | `logic.createEgg` |
-| 血统与近亲 | 判定已启用；界面只说「近亲 / 近亲后代」，不给档位与概率 | `logic.kinTier` / `childVigor` |
+| 血统与近亲 | 只在**配对选择器**给亲属称呼（哥哥、表妹、叔叔……）；不给档位、乘数、距离；详情页不显示血缘 | `logic.kinLabel` |

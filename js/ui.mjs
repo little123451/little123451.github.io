@@ -1559,7 +1559,6 @@ function monModalHtml(uid) {
         ${mon.shiny ? '<div class="kv"><span class="k">闪光</span><span class="v" style="color:#ffd76a">✨ 是</span></div>' : ''}
         ${L.sterilityLabel(mon) ? `<div class="kv"><span class="k">生育</span><span class="v" style="color:#ffb3ba">${L.sterilityLabel(mon)}</span></div>` : ''}
         <div class="kv"><span class="k">蛋组</span><span class="v">${L.eggGroupsDisplay(S, mon.dexId)}</span></div>
-        ${mon.inbred ? `<div class="kv"><span class="k">血缘</span><span class="v" style="color:#ffb3ba">近亲后代 · 第 ${mon.gen} 代</span></div>` : ''}
         ${labMeta}
       </div>
     </div>
@@ -1688,12 +1687,12 @@ function pickerModalHtml(penIdx, slot) {
     .map((m) => {
       const s = sp(m.dexId);
       // 近亲：只在惩罚明显时提示（直系 / 同胞 / 表亲 / 二代表亲）
-      const kin = !!other && L.kinTier(other, m).multiplier != null;
+      const kin = other ? L.kinLabel(S, other, m) : null;
       const eggMatch = !!other && L.sharesKnownEggGroup(S, other.dexId, m.dexId);
       return `<button class="pick${researchedCls(m)}${eggMatch ? ' egg-match' : ''}" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}">
         ${monNoTag(m)}
         <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m)} alt="" />
-        <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}${kin ? '<span class="kin-badge">近亲</span>' : ''}</span>
+        <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}${kin ? `<span class="kin-badge">${kin}</span>` : ''}</span>
         <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)}${L.sterilityLabel(m) ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
     })
@@ -1989,7 +1988,7 @@ function helpModalHtml() {
       <p>你是年轻的大木博士，被“请”进火箭队的地下基地：替他们管理与运营抢来的宝可梦，同时偷偷记录每一只的数据，为日后那本研究笔记写下第一手说明。</p>
       <ul>
         <li><b>繁育</b>：栏位里放两只就会积累繁育条。条满时：一雄一雌、蛋组有交叠 → 产蛋，<b>母体掉 40 点耐受度</b>（低等级母体大约撑 4 只，等级越高越耐用；<b>最后一胎仍会产下，然后力竭而死</b>）；没有雌性时由<b>百变怪</b>承担损耗，雄性不掉耐受度。<b>蛋组不匹配照样能生</b>：三成没成型，活下来的是<b>畸形体</b>——这一胎母体掉 44、父方掉 12，<b>父方也会力竭</b>。<b>同性放不进同一栏</b>（选择伙伴时不列出）；<b>两只百变怪</b>与<b>未发现蛋组的物种</b>（传说 / 幻兽）也放不进；<b>无性别</b>的宝可梦只会静默地配不上。<b>繁育里唯一会死人的路径是力竭</b>，死亡会在培育栏留下<b>遗体</b>，花 6 资金才能腾出位置。新个体有 <b>1/4096</b> 概率闪光、<b>2/4096</b> 概率不孕（♀）/ 不育（♂）。</li>
-        <li><b>近亲</b>：双亲共享祖先就是近亲，按关系远近分档——直系最重，同胞次之，旁系越远越轻，三代以外不惩罚。近亲后代更<b>脆</b>：体质 = 双亲较低者 × 档位乘数（下限 0.5），乘在耐受上限上，也更容易死胎。<b>引入外血</b>（与没有血缘的个体配对）能把体质拉回来：子代体质 = 双亲均值 + 0.2。</li>
+        <li><b>近亲</b>：双亲共享祖先就是近亲，按关系远近分档——直系最重，同胞次之，旁系越远越轻，三代以外不惩罚。选择伙伴时会在候选上标出关系称呼（兄弟、表妹、叔叔……）。近亲后代更<b>脆</b>：体质 = 双亲较低者 × 档位乘数（下限 0.5），乘在耐受上限上，也更容易死胎。<b>引入外血</b>（与没有血缘的个体配对）能把体质拉回来：子代体质 = 双亲均值 + 0.2。</li>
         <li><b>蛋组</b>：博士一开始并不知道任何宝可梦的蛋组，界面上只显示 ???。<b>只有该物种研究到 100% 才会揭示</b>，繁育不会透露蛋组。能不能配，看后代：生出正常个体 = 同蛋组；生出畸形体 = 不同蛋组；没成型则说明不了什么。</li>
         <li><b>畸形体</b>：蛋组不匹配生下来的东西。<b>不育</b>、体质触底（耐受上限只有一半）、<b>不进图鉴</b>、<b>不推进任何物种研究</b>（放进实验室也做不了实验）。<b>不能交单</b>；可以卖，价格约为同物种普通个体的 <b>17%</b>；也可以放进实验室<b>终末榨取</b>——固定只产 <b>1 份样本</b>。围栏里单独一段「畸体」，不和正常个体混在一起，也不参与霸凌。</li>
         <li><b>孵化</b>：蛋在孵化器中倒计时，孵出的永远是该家族的<b>最初形态</b>；孵化步数越高越慢，升级孵化器可加速并增加蛋位。孵出后默认进<b>围栏</b>，要自己放进培育栏。蛋位满了繁育会暂停，培育栏会提示原因。</li>
