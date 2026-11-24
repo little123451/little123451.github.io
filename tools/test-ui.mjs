@@ -183,9 +183,13 @@ check(!makeEl('#pen-0-a-img').style.filter, '满耐受度恢复彩色');
 // 繁育爱心动画
 UI.handleEvents([{ type: 'egg', pen: 0, msg: '配种成功（测试）' }]);
 check(makeEl('#pen-0').classList.contains('love'), '繁育成功时培育栏播放爱心动画');
+check(makeEl('#toast').textContent !== '配种成功（测试）', '产蛋不再弹 toast');
 UI.handleEvents([{ type: 'warn', pen: 0, exhausted: true, msg: '力竭（测试）' }]);
 check(makeEl('#pen-0').classList.contains('clash'), '力竭时培育栏播放倒地动画');
+check(makeEl('#toast').textContent === '力竭（测试）', '力竭仍然弹 toast');
 check(!makeEl('#pen-0').classList.contains('love'), '交战动画替换爱心动画');
+UI.handleEvents([{ type: 'evolve', msg: '测试进化' }]);
+check(makeEl('#toast').textContent !== '测试进化', '进化不再弹 toast');
 
 // 蛋贩子与花钱换货
 check(makeEl('#shop').innerHTML.includes('换一批'), '蛋贩子提供花钱换货按钮');

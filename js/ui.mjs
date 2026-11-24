@@ -281,10 +281,11 @@ export function handleEvents(events) {
   let important = 0;
   for (const e of [...warned, ...rest]) {
     if (important >= 2) break;
-    if (e.type !== 'warn' && e.type !== 'evolve' && e.type !== 'egg' && e.type !== 'research') continue;
+    if (e.type !== 'warn' && e.type !== 'egg' && e.type !== 'research') continue;
+    // 产蛋只写日志、播卡片动画，不再弹 toast（3 个栏位会合到 6 条/分钟）
+    if (e.type === 'egg' && Number.isInteger(e.pen)) continue;
     // 孵化只在“值得被看见”时弹：首次该物种 / 虚弱 / 不孕 / 闪光。其余只进日志。
-    const hatchEvent = e.type === 'egg' && !Number.isInteger(e.pen);
-    if (hatchEvent && !e.special) continue;
+    if (e.type === 'egg' && !e.special) continue;
     toast(e.msg, e.type === 'warn' ? 'bad' : 'good');
     important++;
   }
