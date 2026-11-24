@@ -274,7 +274,7 @@ export function handleEvents(events) {
       continue;
     }
     if (e.type === 'egg' && Number.isInteger(e.pen)) playPenLove(e.pen);
-    if ((e.fight || e.exhausted) && Number.isInteger(e.pen)) playPenClash(e.pen);
+    if (e.exhausted && Number.isInteger(e.pen)) playPenClash(e.pen);
     (e.type === 'warn' ? warned : rest).push(e);
   }
   // 坏消息优先占 toast 名额：同一 tick 里可能同时产蛋、孵化、死人
@@ -681,12 +681,9 @@ function pensSignature() {
   // 卡片上不再显示蛋组知识，签名也就无需包含 knownKey
   const key = (m) => (m ? `${m.uid}:${m.dexId}` : '-');
   const corpseKey = (c) => (c ? `c${c.dexId}:${c.no ?? ''}` : '-');
-  const fails = (S.failedPairs || []).join(',');
-  return (
-    S.pens
-      .map((p) => `${key(L.monByUid(S, p.a))}|${key(L.monByUid(S, p.b))}|${corpseKey(p.aCorpse)}|${corpseKey(p.bCorpse)}`)
-      .join(';') + '|' + fails
-  );
+  return S.pens
+    .map((p) => `${key(L.monByUid(S, p.a))}|${key(L.monByUid(S, p.b))}|${corpseKey(p.aCorpse)}|${corpseKey(p.bCorpse)}`)
+    .join(';');
 }
 
 function ensurePens() {
@@ -755,7 +752,7 @@ function patchPens() {
     patchSlot(b, i, 'b');
 
     // 状态口径统一走 logic：只有「注定配不成」的情况才会提前说明；
-    // 会争斗的配对一律显示为正常积累——博士只能靠试。
+    // 蛋组是否匹配不提前泄露——博士只能靠试。
     const st = a && b ? L.penStatus(S, pen) : { kind: 'idle' };
 
     const warn = el(`pen-${i}-warn`);

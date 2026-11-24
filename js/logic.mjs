@@ -400,7 +400,6 @@ export function newGame(seed = (Date.now() % 2147483647) || 7) {  const state = 
       experimentSpent: 0,
       corpseSpent: 0,
       released: 0,
-      fights: 0,
     },
     nextId: 1,
     nextMonNo: 1,
@@ -550,17 +549,17 @@ export function compatibility(a, b) {
   const sb = sp(b.dexId);
   const da = isDitto(a);
   const db = isDitto(b);
-  // 两只百变怪：按设定它们不会为这种事打架，静默处理
+  // 两只百变怪：凑不出后代，静默处理
   if (da && db) return { ok: false, quiet: true, code: 'ditto-pair', reason: '两只百变怪凑不出什么来' };
   const groupsA = sa.eggGroups || [];
   const groupsB = sb.eggGroups || [];
-  // 未发现蛋组（传说 / 幻兽）：同样不会为此争斗
+  // 未发现蛋组（传说 / 幻兽）：静默处理
   if (!da && groupsA.includes('no-eggs')) return { ok: false, quiet: true, code: 'no-eggs', reason: `${sa.zh} 属于未发现蛋组` };
   if (!db && groupsB.includes('no-eggs')) return { ok: false, quiet: true, code: 'no-eggs', reason: `${sb.zh} 属于未发现蛋组` };
   const sterile = a.sterile ? a : b.sterile ? b : null;
   if (sterile) return { ok: false, sterile: true, reason: `${sp(sterile.dexId).zh} ${sterilityLabel(sterile)}，无法配种` };
   if (!da && !db) {
-    // 无性别：放进栏位不会和任何配对打起来，只是什么也不会发生
+    // 无性别：放进栏位什么也不会发生
     if (a.gender === 'x' || b.gender === 'x') {
       const bothX = a.gender === 'x' && b.gender === 'x';
       const odd = a.gender === 'x' ? a : b;
@@ -579,7 +578,7 @@ export function compatibility(a, b) {
 }
 
 // ---------- 蛋组知识 ----------
-// 博士一开始完全不知道蛋组；只有亲手繁育出蛋，才确认参与交汇的那个蛋组
+// 博士一开始完全不知道蛋组；只有该物种研究到 100% 才揭示。
 export function knownEggGroups(state, dexId) {
   return state.eggKnown?.[dexId] || [];
 }
@@ -638,7 +637,7 @@ function breedCostBearer(a, b) {
   return a;
 }
 
-// 争斗时比较“谁更弱”：先看等级，再看种族值，
+// 比较「谁更弱」：先看等级，再看种族值，
 // 最后按 uid 的数值编号兜底（不能按字符串比，u10 会排在 u9 前面）
 const uidNo = (u) => Number(String(u).replace(/\D/g, '')) || 0;
 
@@ -1316,7 +1315,6 @@ export function resumeAssistant(state, slotIdx) {
 export const RELEASE_TEXT = {
   exhausted: '耗尽了耐受度，倒下了',
   overload: '没能承受住实验，死在了实验台上',
-  fight: '在争斗中伤重不治',
   threat: '被实验的动静吓得耗尽耐受度，瘫倒在地',
   manual: '被放生了',
 };
@@ -1626,7 +1624,7 @@ export function processPenCorpse(state, penIdx, slot) {
 }
 
 // 培育栏状态：UI 与 tick 共用同一口径。
-// 注意：会争斗的配对一律返回 breeding，不提前泄露结果（博士只能靠试）。
+// 注意：不在状态里泄露蛋组是否匹配——博士只能靠试。
 export function penStatus(state, pen) {
   const a = monByUid(state, pen?.a);
   const b = monByUid(state, pen?.b);
@@ -1694,7 +1692,7 @@ function resolvePen(state, pen, events, penIdx = null) {
     return { kind: 'egg' };
   }
 
-  // 不孕 / 不育：不会产蛋，也不会因此争斗
+  // 不孕 / 不育：不会产蛋
   if (comp.sterile) {
     pen.breed = 0;
     events.push({ type: 'warn', pen: penIdx, sterile: true, msg: `${comp.reason}，本次无法繁育` });
@@ -1707,8 +1705,8 @@ function resolvePen(state, pen, events, penIdx = null) {
   return { kind: 'quiet' };
 }
 
-// ---------- 围栏争斗 ----------
-// 不在培育栏、也不在实验室的个体才算“围栏里的”；同物种同性别会互相争斗
+// ---------- 围栏霸凌 ----------
+// 不在培育栏、也不在实验室的个体才算“围栏里的”；同物种同性别会互相霸凌
 function idleGroups(state) {
   const groups = new Map();
   for (const mon of idleMons(state)) {
@@ -1721,7 +1719,7 @@ function idleGroups(state) {
   return groups;
 }
 
-// 给界面用：哪些群体正在围栏里争斗
+// 给界面用：哪些群体正在围栏里被霸凌
 export function idleConflicts(state) {
   const out = [];
   for (const [key, list] of idleGroups(state)) {
@@ -1825,7 +1823,7 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
     }
   }
 
-  // 配种 / 争斗
+  // 配种
   for (let i = 0; i < state.pens.length; i++) {
     const pen = state.pens[i];
     const st = penStatus(state, pen);

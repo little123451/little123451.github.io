@@ -312,3 +312,29 @@
 ### 28.3 收尾
 
 - `spec.md` §3 立绘行已更新；`design/breeding.md` §20.3 状态改为「已实施」；backlog #1 / B1 已删行。
+
+---
+
+## 29. 实施登记 · B2 争斗残留清理（2026-11-24）
+
+> 类型：实施登记 ｜ 代码：`js/logic.mjs`、`js/ui.mjs`、`js/rules.mjs`、`tools/test-logic.mjs`、`tools/test-ui.mjs`、`tools/test-experiments.mjs`
+
+### 29.1 改动
+
+| 位置 | 清理 |
+|---|---|
+| 死因文案 | 删除 `RELEASE_TEXT.fight` |
+| 统计字段 | 删除 `state.stats.fights` |
+| 动画分支 | `playPenClash` 只由 `exhausted` 触发（力竭动画保留） |
+| 死引用 | `pensSignature()` 不再读 `S.failedPairs` |
+| 注释 | 清除「争斗」相关注释（`weakerOf`、`penStatus`、`knownEggGroups`、`compatibility`、围栏霸凌段落、`rules.mjs`） |
+| 测试 | 删除 `fights === 0` 与 `e.fight` 断言；合成 `fight` 事件改用 `exhausted`；存档用例改用 `eggKnown` |
+
+### 29.2 验收
+
+- `js/` 内不再出现「争斗」相关代码与注释；只剩霸凌用的 `fighting` 类名与「格斗」属性词。
+- `npm test` 五套全绿。
+
+### 29.3 说明
+
+历史记录（本文件 §21.3、`design/breeding.md` §13.9 / §20.1）保留原文不改写。

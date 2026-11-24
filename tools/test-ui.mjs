@@ -183,8 +183,8 @@ check(!makeEl('#pen-0-a-img').style.filter, '满耐受度恢复彩色');
 // 繁育爱心动画
 UI.handleEvents([{ type: 'egg', pen: 0, msg: '配种成功（测试）' }]);
 check(makeEl('#pen-0').classList.contains('love'), '繁育成功时培育栏播放爱心动画');
-UI.handleEvents([{ type: 'warn', pen: 0, fight: true, msg: '争斗（测试）' }]);
-check(makeEl('#pen-0').classList.contains('clash'), '争斗失败时培育栏播放交战动画');
+UI.handleEvents([{ type: 'warn', pen: 0, exhausted: true, msg: '力竭（测试）' }]);
+check(makeEl('#pen-0').classList.contains('clash'), '力竭时培育栏播放倒地动画');
 check(!makeEl('#pen-0').classList.contains('love'), '交战动画替换爱心动画');
 
 // 蛋贩子与花钱换货

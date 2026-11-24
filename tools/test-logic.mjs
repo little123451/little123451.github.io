@@ -107,7 +107,7 @@ for (let i = 0; i < 1200; i++) {
 console.log(`\n--- 模拟 300 天后 ---`);
 console.log(`天数=${state.day.toFixed(1)} 金币=${state.gold} 糖果=${state.candies} 声望=${state.rep} 职级=${L.currentRank(state).name}`);
 console.log(`宝可梦=${state.mons.length} 蛋=${state.eggs.length} 订单=${state.orders.length} 已完成研究笔记=${state.dex.length}`);
-console.log(`交付=${delivered} 孵化=${state.stats.hatched} 配种=${state.stats.bred} 争斗=${state.stats.fights} 过期=${state.stats.expired}`);
+console.log(`交付=${delivered} 孵化=${state.stats.hatched} 配种=${state.stats.bred} 过期=${state.stats.expired}`);
 console.log(`事件=${totalEvents.length} 进化=${totalEvents.filter((e) => e.type === 'evolve').length} 升级=${totalEvents.filter((e) => e.type === 'level').length}`);
 
 check(Number.isFinite(state.gold) && state.gold >= 0, '金币合法');
@@ -740,7 +740,7 @@ check(L.sterilityLabel(noLimitMale) === '', '正常雄性没有性冷淡标记')
 check(L.compatibility(noLimitMale, noLimitFemale).ok === true, '正常雄性可继续配种');
 check(L.compatibility(noLimitMale, noLimitFemale).cold === undefined, '兼容性判定不再返回性冷淡状态');
 
-// 蛋组不匹配：不再争斗，改为「先过一次死胎，活下来的是畸形体」
+// 蛋组不匹配：先过一次死胎，活下来的是畸形体
 const br3 = L.newGame(4102);
 const strong = L.createMon(br3, 16, 30, { gender: 'm' }); // 波波 Lv30
 const weakMon = L.createMon(br3, 74, 3, { gender: 'f' }); // 小拳石 Lv3，异性但蛋组不匹配
@@ -784,7 +784,7 @@ sameSexState.mons = [ssA, ssB];
 sameSexState.pens = [{ a: ssA.uid, b: ssB.uid, breed: 0 }];
 sameSexState.eggs = [];
 const ssEv = L.tick(sameSexState, 3);
-check(!!L.monByUid(sameSexState, ssA.uid) && !!L.monByUid(sameSexState, ssB.uid), '同性不再争斗致死');
+check(!!L.monByUid(sameSexState, ssA.uid) && !!L.monByUid(sameSexState, ssB.uid), '同性配对不会致死');
 check(sameSexState.eggs.length === 0, '同性不产蛋');
 check(ssEv.some((e) => e.quiet), '同性给出静默提示');
 
@@ -859,7 +859,7 @@ L.tick(nido, 3);
 check(nido.eggs.length === 1, '尼多娜能产蛋', `(${nido.eggs.length})`);
 check(nido.eggs[0]?.dexId === 29, '蛋孵出尼多兰（最初形态）', `(${nido.eggs[0]?.dexId})`);
 
-// 两个无性别：不争斗、不产蛋、不掉耐受，只提示一次
+// 两个无性别：不产蛋、不掉耐受，只提示一次
 const quietState = L.newGame(4201);
 const magnemite = L.createMon(quietState, 81, 10, {});
 const voltorb = L.createMon(quietState, 100, 10, {});
@@ -867,7 +867,7 @@ quietState.mons = [magnemite, voltorb];
 quietState.pens = [{ a: magnemite.uid, b: voltorb.uid, breed: 0 }];
 quietState.eggs = [];
 const quietEv = L.tick(quietState, 3);
-check(quietState.eggs.length === 0 && (quietState.stats.fights || 0) === 0, '两个无性别不产蛋也不争斗');
+check(quietState.eggs.length === 0, '两个无性别不产蛋');
 check(!!L.monByUid(quietState, magnemite.uid) && !!L.monByUid(quietState, voltorb.uid), '两个无性别都还活着');
 check(magnemite.tolerance === maxTolerance(magnemite) && voltorb.tolerance === maxTolerance(voltorb), '两个无性别不掉耐受度');
 check(quietEv.some((e) => e.quiet), '两个无性别给出静默提示');
@@ -881,13 +881,13 @@ mixedQuiet.mons = [mxA, mxB];
 mixedQuiet.pens = [{ a: mxA.uid, b: mxB.uid, breed: 0 }];
 mixedQuiet.eggs = [];
 const mxEv = L.tick(mixedQuiet, 3);
-check(mixedQuiet.eggs.length === 0 && (mixedQuiet.stats.fights || 0) === 0, '无性别与有性别不产蛋也不争斗');
+check(mixedQuiet.eggs.length === 0, '无性别与有性别不产蛋');
 check(!!L.monByUid(mixedQuiet, mxA.uid) && !!L.monByUid(mixedQuiet, mxB.uid), '无性别与有性别都还活着');
 check(mxEv.some((e) => e.quiet), '无性别与有性别给出静默提示');
-check(!mxEv.some((e) => e.fight), '无性别与有性别不触发争斗事件');
+check(mxEv.filter((e) => e.quiet).length === 1, '无性别与有性别只提示一次');
 check(mixedQuiet.pens[0].breed === 0, '无性别与有性别不积累繁育条');
 
-// 同性：静默，不再争斗
+// 同性：静默
 const sameSexMsg = L.newGame(4202);
 const ssM1 = L.createMon(sameSexMsg, 16, 30, { gender: 'm' });
 const ssM2 = L.createMon(sameSexMsg, 16, 3, { gender: 'm' });
@@ -895,7 +895,7 @@ sameSexMsg.mons = [ssM1, ssM2];
 sameSexMsg.pens = [{ a: ssM1.uid, b: ssM2.uid, breed: 0 }];
 sameSexMsg.eggs = [];
 const ssEv2 = L.tick(sameSexMsg, 3);
-check(!ssEv2.some((e) => e.fight), '同性不再触发争斗事件');
+check(ssEv2.filter((e) => e.quiet).length === 1, '同性只提示一次');
 check(ssEv2.some((e) => e.quiet), '同性给出静默提示');
 check(!!L.monByUid(sameSexMsg, ssM1.uid) && !!L.monByUid(sameSexMsg, ssM2.uid), '同性两只都还活着');
 
@@ -909,9 +909,8 @@ eggMsg.mons = [birdA, rockB];
 eggMsg.pens = [{ a: birdA.uid, b: rockB.uid, breed: 0 }];
 eggMsg.eggs = [];
 const egEv = L.tick(eggMsg, 3);
-check(!egEv.some((e) => e.fight), '蛋组不匹配不再触发争斗');
+check(!egEv.some((e) => e.exhausted), '蛋组不匹配不会直接死人');
 check(!!L.monByUid(eggMsg, birdA.uid) && !!L.monByUid(eggMsg, rockB.uid), '蛋组不匹配两只都还活着');
-check(!('failedPairs' in eggMsg), '不再写入永久锁定');
 
 // 培育栏遗体：占位 + 付费处理
 const penCorpse = L.newGame(4206);
@@ -1126,7 +1125,7 @@ const fullBuy = L.buyEggOffer(guardState, 0);
 check(fullBuy.ok === false && fullBuy.msg.includes('孵化器已满'), '蛋位满时买蛋被拒绝', fullBuy.msg);
 check(guardState.eggs.length === beforeEggs, '被拒绝时不会多出蛋');
 
-// ---------- 争斗 tie-break 用数值编号 ----------
+// ---------- 霸凌 tie-break 用数值编号 ----------
 const tieState = L.newGame(4305);
 const tieA = L.createMon(tieState, 16, 5, {});
 const tieB = L.createMon(tieState, 16, 5, {});
@@ -1544,7 +1543,6 @@ specialState.eggs = [];
 specialState.market = [];
 const sterileEvents = L.tick(specialState, 3);
 check(specialState.eggs.length === 0, '不孕配对不产蛋');
-check((specialState.stats.fights || 0) === 0, '不孕配对不触发争斗');
 check(sterileEvents.some((e) => e.sterile && e.msg.includes('不孕')), '不孕配对有明确提示');
 const specialRound = deserialize(serialize(specialState));
 check(specialRound.mons.find((m) => m.uid === shinyMon.uid)?.shiny === true, '存档保留闪光');

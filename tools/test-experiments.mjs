@@ -112,15 +112,14 @@ const badTarget = [...byId.values()].filter(
 );
 check(badTarget.length === 0, '高损耗实验不再把伤害写在第三方身上', badTarget.map((e) => e.id).join(','));
 
-// 存档字段：失败组合锁定、闲置计时、收束类型、个体冷却
+// 存档字段：蛋组揭示、闲置计时、收束类型、个体冷却
 const st = L.newGame(7777);
-st.failedPairs = ['16-21'];
+st.eggKnown = { 16: ['flying'] };
 st.lastTaskDay = 2;
 st.winKind = 'rank';
 st.expCd['u1:measure'] = 5;
 const round = deserialize(serialize(st));
-check(round.failedPairs?.includes('16-21'), '存档保留蛋组不匹配锁定');
-check(!('breedFails' in round), '存档不再保留配对失败记录');
+check(round.eggKnown?.[16]?.includes('flying'), '存档保留蛋组揭示');
 check(round.lastTaskDay === 2, '存档保留闲置计时');
 check(round.winKind === 'rank', '存档保留收束类型');
 check(round.expCd['u1:measure'] === 5, '存档保留个体冷却');

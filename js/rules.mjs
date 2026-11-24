@@ -54,7 +54,7 @@ export const CONFIG = {
   bullyMinGroup: 4,
   bullyRatePerExtraDay: 3,
   idleCorpseProcessCost: 6,
-  // 培育栏里死亡（争斗/力竭）会留下遗体并占住该位置，处理费固定 6 资金
+  // 培育栏里死亡（力竭）会留下遗体并占住该位置，处理费固定 6 资金
   penCorpseProcessCost: 6,
   // 实验室挣扎：耐受度高于该值时缓慢下降
   labStruggleThreshold: 70,
