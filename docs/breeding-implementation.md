@@ -2,7 +2,7 @@
 
 > 状态：**已实施**（`00e018b`，2026-11-20），`npm test` 五套全绿；实施偏差见 §9
 > 基线：`master@477dbce`
-> 设计依据：`docs/design-individual-value.md` §13（定位与机制）、§14（界面信息原则）
+> 设计依据：`docs/design/breeding.md` §13（定位与机制）、`docs/design/principles.md` §14（界面信息原则）
 > 范围：**只做繁育内部循环**。四个去处、外血质量、特性遗传、批量订单、断代保护均不在本次范围。
 
 ---
