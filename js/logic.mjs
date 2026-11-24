@@ -79,10 +79,14 @@ export function idleSections(state) {
     for (const id of evolutionChainIds(m.dexId)) relatedIds.add(id);
   }
   const all = idleMons(state);
+  // 畸形体单独一段，不进「培育相关 / 其它」
+  const mutants = all.filter((m) => m.mutant);
+  const normal = all.filter((m) => !m.mutant);
   return {
     relatedIds,
-    related: all.filter((m) => relatedIds.has(m.dexId)),
-    others: all.filter((m) => !relatedIds.has(m.dexId)),
+    mutants,
+    related: normal.filter((m) => relatedIds.has(m.dexId)),
+    others: normal.filter((m) => !relatedIds.has(m.dexId)),
   };
 }
 
@@ -275,7 +279,8 @@ function valueOf(dexId) {
   return Math.round(200 + bst(dexId) * 0.9 + (255 - s.captureRate) * 1.2);
 }
 export const monValue = (mon) => Math.round(valueOf(mon.dexId) * (0.85 + mon.level * 0.015));
-export const sellPrice = (mon) => Math.round(monValue(mon) * 0.45);
+export const sellPrice = (mon) =>
+  Math.round(monValue(mon) * 0.45 * (mon.mutant ? CONFIG.mutantSellFactor : 1));
 
 export function genderFromRate(state, rate) {
   if (rate === -1) return 'x';
@@ -322,9 +327,13 @@ export function createMon(state, dexId, level = 1, opts = {}) {
     inbred: !!opts.inbred,
     // 出厂即满值；雄性上限是同物种、同等级雌性的 1.25 倍
     tolerance: Math.max(1, Math.round(toleranceCap(level, gender) * vigor)),
-    // 血统：祖先 uid 与代数（市场买来的蛋 / 初始个体都为空）
-    ancestors: opts.ancestors ? [...opts.ancestors] : [],
+    // 血统：祖先 uid → 距离我的代数（市场买来的蛋 / 初始个体都为空）
+    ancestors: opts.ancestors ? { ...opts.ancestors } : {},
     gen: opts.gen ?? 0,
+    // 畸形体：跨蛋组硬凑出来的东西——不育、体质触底、无图鉴、不推进研究
+    mutant: !!opts.mutant,
+    // 畸形体的父母物种（渲染用；父母可能已经不在了）
+    mix: opts.mix ? [...opts.mix] : null,
     // 来源：跟着个体一辈子（市场进货渠道 / 培育栏自产 / 野外捕获）
     source: opts.source ?? null,
     origin: opts.origin ?? 'egg',
@@ -367,8 +376,6 @@ export function newGame(seed = (Date.now() % 2147483647) || 7) {  const state = 
     research: {},
     // 每个物种在研究过程中被实验损耗掉的个体数
     researchLoss: {},
-    // 永久记住曾经因蛋组不匹配而失败的物种组合
-    failedPairs: [],
     dex: [],
     // 蛋组知识：{ 物种id: ['已确认的蛋组'] }
     eggKnown: {},
@@ -533,23 +540,9 @@ export function quitGame(state) {
 }
 
 // ---------- 配种 ----------
-const isDitto = (mon) => mon.dexId === 132;
+export const isDitto = (mon) => mon.dexId === 132;
 
 // 内部判定：真正的“可繁育”条件（不再展示给玩家，博士只能靠试）
-// 曾经配对失败的物种组合：同栏时对方物种不可再用于配对
-export function failedPartners(state, dexId) {
-  const out = new Set();
-  for (const key of state.failedPairs || []) {
-    const [a, b] = String(key).split('-').map(Number);
-    if (a === dexId) out.add(b);
-    else if (b === dexId) out.add(a);
-  }
-  return out;
-}
-
-export const failedPair = (state, aDexId, bDexId) =>
-  aDexId !== bDexId && failedPartners(state, aDexId).has(bDexId);
-
 export function compatibility(a, b) {
   if (!a || !b) return { ok: false, reason: '需要两只宝可梦' };
   if (a.uid === b.uid) return { ok: false, reason: '不能和自己配种' };
@@ -578,35 +571,17 @@ export function compatibility(a, b) {
         reason: bothX ? '两只都没有性别，凑在一起什么也没发生' : `${sp(odd.dexId).zh} 没有性别，配不了`,
       };
     }
-    if (a.gender === b.gender) return { ok: false, code: 'same-sex', reason: '需要一雄一雌' };
-    if (!groupsA.some((g) => groupsB.includes(g))) return { ok: false, reason: '蛋组不匹配', code: 'egg-group' };
+    if (a.gender === b.gender) return { ok: false, quiet: true, code: 'same-sex', reason: '同性配不了' };
+    const mismatch = !groupsA.some((g) => groupsB.includes(g));
+    return { ok: true, mismatch };
   }
-  return { ok: true, kin: isKin(a, b), reason: '可以配种' };
+  return { ok: true, mismatch: false };
 }
 
 // ---------- 蛋组知识 ----------
 // 博士一开始完全不知道蛋组；只有亲手繁育出蛋，才确认参与交汇的那个蛋组
 export function knownEggGroups(state, dexId) {
   return state.eggKnown?.[dexId] || [];
-}
-
-export function revealEggGroups(state, a, b) {
-  if (!state.eggKnown) state.eggKnown = {};
-  const sa = sp(a.dexId);
-  const sb = sp(b.dexId);
-  if (!sa || !sb) return [];
-  const shared = (sa.eggGroups || []).filter((g) => (sb.eggGroups || []).includes(g));
-  const add = (dexId, groups) => {
-    if (!groups.length) return;
-    if (!state.eggKnown[dexId]) state.eggKnown[dexId] = [];
-    for (const g of groups) if (!state.eggKnown[dexId].includes(g)) state.eggKnown[dexId].push(g);
-  };
-  add(a.dexId, shared);
-  add(b.dexId, shared);
-  // 百变怪没有交汇的蛋组，单独记一笔
-  if (isDitto(a)) add(a.dexId, ['ditto']);
-  if (isDitto(b)) add(b.dexId, ['ditto']);
-  return shared;
 }
 
 // 展示用：未确认的蛋组一律显示为 ？？？
@@ -687,47 +662,68 @@ function stillbirthChance(vigor) {
   return 0.06;
 }
 
-// 血统：记录祖先 uid 与代数。
-// 不做条数截断——截断会把母本挤出祖先表，连亲子都判不出来。
+// 血统：祖先 uid → 最近代数（父 = 1，祖父 = 2…）。不做截断，否则连亲子都判不出来。
 function lineageOf(parents) {
-  if (!parents?.length) return { ancestors: [], gen: 0 };
-  const set = new Set();
+  if (!parents?.length) return { ancestors: {}, gen: 0 };
+  const map = {};
   let gen = 0;
   for (const p of parents) {
     if (!p) continue;
-    set.add(p.uid);
-    for (const a of p.ancestors || []) set.add(a);
+    map[p.uid] = 1;
+    for (const [u, d] of Object.entries(p.ancestors || {})) {
+      const nd = d + 1;
+      if (map[u] == null || map[u] > nd) map[u] = nd;
+    }
     gen = Math.max(gen, p.gen ?? 0);
   }
-  return { ancestors: [...set], gen: gen + 1 };
+  return { ancestors: map, gen: gen + 1 };
 }
 
-// 近亲：亲子（一方是另一方的祖先）或共享任意祖先。不分远近，只有“是/不是”。
-export function isKin(a, b) {
-  if (!a || !b) return false;
-  const A = new Set(a.ancestors || []);
-  const B = new Set(b.ancestors || []);
-  if (A.has(b.uid) || B.has(a.uid)) return true;
-  for (const u of B) if (A.has(u)) return true;
-  return false;
+// 近亲判定：直系优先（任意深度都是最重档），旁系按共同祖先的深度分档。
+// 返回 multiplier 为 null 表示不在惩罚范围内。
+export function kinTier(a, b) {
+  if (!a || !b) return { multiplier: null, direct: false, depth: Infinity };
+  const A = a.ancestors || {};
+  const B = b.ancestors || {};
+  // 直系：一方出现在另一方的祖先表里
+  if (A[b.uid] != null || B[a.uid] != null) {
+    return { multiplier: CONFIG.kinTierDirect, direct: true, depth: 1 };
+  }
+  let depth = Infinity;
+  for (const u of Object.keys(A)) {
+    const e = B[u];
+    if (e == null) continue;
+    const d = Math.max(A[u], e);
+    if (d < depth) depth = d;
+  }
+  if (depth === 1) return { multiplier: CONFIG.kinTier1, direct: false, depth };
+  if (depth === 2) return { multiplier: CONFIG.kinTier2, direct: false, depth };
+  if (depth === 3) return { multiplier: CONFIG.kinTier3, direct: false, depth };
+  return { multiplier: null, direct: false, depth };
 }
 
-// 子代体质：近亲 = min(双亲) × 0.85（下限 0.5）；非近亲 = 均值 + 0.2 杂种优势（封顶 1）
-export function childVigor(a, b, kin) {
+export const isKin = (a, b) => kinTier(a, b).multiplier != null;
+
+// 子代体质：近亲 = min(双亲) × 档位乘数（下限 0.5）；非近亲 = 均值 + 0.2 杂种优势（封顶 1）
+export function childVigor(a, b, multiplier) {
   const va = a?.vigor ?? 1;
   const vb = b?.vigor ?? 1;
-  const raw = kin
-    ? Math.min(va, vb) * CONFIG.kinVigorFactor
-    : (va + vb) / 2 + CONFIG.hybridVigorBonus;
+  const raw = multiplier == null
+    ? (va + vb) / 2 + CONFIG.hybridVigorBonus
+    : Math.min(va, vb) * multiplier;
   const floor = CONFIG.vigorFloor;
   return Math.round(Math.min(1, Math.max(floor, raw)) * 1000) / 1000;
 }
 
-function createEgg(state, dexId, parents, source = BRED_SOURCE) {
+function createEgg(state, dexId, parents, source = BRED_SOURCE, mutant = false) {
   if (state.eggs.length >= eggSlots(state)) return null;
   const s = sp(dexId);
-  const kin = parents ? isKin(parents[0], parents[1]) : false;
-  const vigor = parents ? childVigor(parents[0], parents[1], kin) : 1;
+  const tier = parents ? kinTier(parents[0], parents[1]) : { multiplier: null };
+  const vigor = mutant
+    ? CONFIG.mutantVigor
+    : parents
+      ? childVigor(parents[0], parents[1], tier.multiplier)
+      : 1;
   const ivs = {};
   for (const k of STAT_KEYS) {
     const base = parents ? (parents[0].ivs[k] + parents[1].ivs[k]) / 2 : 15;
@@ -748,7 +744,11 @@ function createEgg(state, dexId, parents, source = BRED_SOURCE) {
     ...lineageOf(parents),
     // 体质系数与“近亲后代”标记，同样跟着蛋 → 个体
     vigor,
-    inbred: kin,
+    inbred: !mutant && tier.multiplier != null,
+    // 畸形体：不育、体质触底，父母物种记在 mix 上
+    mutant: !!mutant,
+    mix: mutant && parents ? [parents[0].dexId, parents[1].dexId] : null,
+    ...(mutant ? { sterile: true } : {}),
     // 来源跟着蛋进来，孵出后继续跟着个体
     source: source || BRED_SOURCE,
   };
@@ -768,6 +768,9 @@ function hatch(state, egg, events) {
     gen: egg.gen,
     vigor: egg.vigor ?? 1,
     inbred: !!egg.inbred,
+    mutant: !!egg.mutant,
+    mix: egg.mix || null,
+    sterile: egg.mutant ? true : undefined,
     origin: 'egg',
     source: egg.source,
   });
@@ -972,7 +975,7 @@ export function orderMatches(order, mon) {
 
 export function deliverableMons(state, order) {
   return state.mons
-    .filter((m) => !labContains(state, m.uid) && penIndex(state, m.uid) === -1 && orderMatches(order, m))
+    .filter((m) => !m.mutant && !labContains(state, m.uid) && penIndex(state, m.uid) === -1 && orderMatches(order, m))
     .sort((a, b) => b.level - a.level);
 }
 
@@ -1047,9 +1050,6 @@ export function assignPen(state, penIdx, slot, uidMon) {
     return { ok: false, msg: `${sp(mon.dexId).zh} 属于未发现蛋组，配不了` };
   }
   const other = monByUid(state, key === 'a' ? pen.b : pen.a);
-  if (other && other.dexId !== mon.dexId && failedPair(state, other.dexId, mon.dexId)) {
-    return { ok: false, msg: `${sp(other.dexId).zh} 与 ${sp(mon.dexId).zh} 曾配对失败，不能再同栏` };
-  }
   // 两只百变怪凑不出什么来，也不该为此打起来
   if (other && isDitto(other) && isDitto(mon)) {
     return { ok: false, msg: '两只百变怪凑不出什么来，分开放吧' };
@@ -1239,7 +1239,8 @@ export function canFinalExtraction(state, slotIdx) {
   if (slot?.corpse) return { ok: false, msg: '实验台上只剩遗体' };
   const mon = slot?.uid ? monByUid(state, slot.uid) : null;
   if (!mon) return { ok: false, msg: '实验台是空的' };
-  if (!isResearched(state, mon.dexId)) return { ok: false, msg: '这个物种还没研究完' };
+  // 畸形体没有物种研究可言，随时可以榨
+  if (!mon.mutant && !isResearched(state, mon.dexId)) return { ok: false, msg: '这个物种还没研究完' };
   if (state.gold < CONFIG.finalExtractionCost) return { ok: false, msg: '耗材不足' };
   return { ok: true, mon, slot };
 }
@@ -1254,7 +1255,9 @@ export function finalExtraction(state, slotIdx) {
   const mu = Math.max(1, Math.max(0, mon.tolerance) / CONFIG.sampleMuDivisor);
   const sd = Math.max(0.6, mu * CONFIG.sampleSigmaRatio);
   const cap = Math.max(1, Math.ceil(mu * 2));
-  const amount = clamp(Math.round(mu + sd * gauss(state)), 1, cap);
+  const amount = mon.mutant
+    ? CONFIG.mutantSamples
+    : clamp(Math.round(mu + sd * gauss(state)), 1, cap);
 
   state.gold -= CONFIG.finalExtractionCost;
   state.stats.spent = (state.stats.spent || 0) + CONFIG.finalExtractionCost;
@@ -1385,6 +1388,8 @@ function logAssistant(state, mon, kind) {
 }
 
 function logLabDeath(state, mon, cause) {
+  // 畸形体没有物种研究，不写进任何研究笔记
+  if (mon.mutant) return;
   // 该物种研究已满：不再往研究笔记里写任何实验日志
   if (isResearched(state, mon.dexId)) return;
   if (!state.expJournal) state.expJournal = [];
@@ -1412,6 +1417,9 @@ export function startExperiment(state, uidMon, experimentId) {
   const expList = experimentsFor(mon.dexId);
   const exp = expList.find((e) => e.id === experimentId);
   if (!exp) return { ok: false, msg: '没有这个实验' };
+
+  // 畸形体没有研究价值：不推进任何物种，只能处理或终末榨取
+  if (mon.mutant) return { ok: false, msg: '它提供不了有用的数据' };
 
   // 该物种研究已满：实验结束，只剩终末榨取
   if (isResearched(state, mon.dexId)) {
@@ -1561,20 +1569,20 @@ export function buyUpgrade(state, key) {
 // ---------- 时间推进 ----------
 // 培育栏：两只放进去就会开始积累繁育条；满了以后——
 //   · 条件正常：产蛋，承担损耗的一方（雌性；无雌性时是百变怪）掉耐受度
-//   · 条件不正常：两只打架，弱的那只死亡，另一只掉耐受度
-//   · 注定配不成（已锁定 / 不孕 / 无性别 / 双百变怪 / 未发现蛋组）：条不再空转，只提示一次
-// 只保留“蛋组不匹配”造成的永久组合锁定。
-function lockFailedPair(state, a, b) {
-  if (!a || !b || a.dexId === b.dexId) return;
-  if (!state.failedPairs) state.failedPairs = [];
-  const key = [a.dexId, b.dexId].sort((x, y) => x - y).join('-');
-  if (!state.failedPairs.includes(key)) state.failedPairs.push(key);
-}
-
+//   · 蛋组不匹配：同样产蛋，但先过一次死胎，活下来的是畸形体，父母双方都要掉耐受度
+//   · 注定配不成（不孕 / 无性别 / 双百变怪 / 未发现蛋组）：条不再空转，只提示一次
 function penSlotOf(pen, uidMon) {
   if (pen.a === uidMon) return 'a';
   if (pen.b === uidMon) return 'b';
   return null;
+}
+
+// 繁育里的一方力竭：留下遗体并报警。返回 true 表示它死了。
+function exhaustIfNeeded(state, mon, pen, penIdx, events) {
+  if (!mon || mon.tolerance > 0 || !monByUid(state, mon.uid)) return false;
+  const name = leavePenCorpse(state, mon, 'exhausted', pen, penSlotOf(pen, mon.uid));
+  events.push({ type: 'warn', pen: penIdx, exhausted: true, msg: `${name} 在繁育中耗尽了耐受度，力竭而死` });
+  return true;
 }
 
 // 培育栏里的死亡会留下遗体，占住那个位置，直到花钱处理
@@ -1621,9 +1629,6 @@ export function penStatus(state, pen) {
   const a = monByUid(state, pen?.a);
   const b = monByUid(state, pen?.b);
   if (!a || !b) return { kind: 'idle' };
-  if (a.dexId !== b.dexId && failedPair(state, a.dexId, b.dexId)) {
-    return { kind: 'locked', a, b, reason: `${sp(a.dexId).zh} 与 ${sp(b.dexId).zh} 曾配对失败，不能继续同栏` };
-  }
   const comp = compatibility(a, b);
   if (comp.ok) {
     if (state.eggs.length >= eggSlots(state)) return { kind: 'waiting-egg', a, b };
@@ -1632,13 +1637,6 @@ export function penStatus(state, pen) {
   if (comp.sterile) return { kind: 'sterile', a, b, reason: comp.reason };
   if (comp.quiet) return { kind: 'quiet', a, b, reason: comp.reason };
   return { kind: 'breeding', a, b };
-}
-
-// 争斗文案按原因分级：让玩家能从结果里学到“为什么”
-function fightReason(a, b, comp) {
-  if (comp.code === 'same-sex') return `两只都是${a.gender === 'f' ? '雌性' : '雄性'}`;
-  if (comp.code === 'egg-group') return `${sp(a.dexId).zh} 与 ${sp(b.dexId).zh} 蛋组不合`;
-  return `${sp(a.dexId).zh} 与 ${sp(b.dexId).zh} 合不来`;
 }
 
 function resolvePen(state, pen, events, penIdx = null) {
@@ -1657,74 +1655,54 @@ function resolvePen(state, pen, events, penIdx = null) {
       pen.breed = CONFIG.breedDays;
       return { kind: 'egg-full' };
     }
-    const bearer = breedCostBearer(a, b);
+    const mother = breedCostBearer(a, b);
+    const father = mother === a ? b : a;
+    const mismatch = !!comp.mismatch;
+    const motherCost = mismatch ? CONFIG.crossGroupMotherCost : CONFIG.breedToleranceCost;
+    const fatherCost = mismatch ? CONFIG.crossGroupFatherCost : 0;
 
-    // 死胎：体质越差越容易。照常扣耐受、不产蛋——母体照样付了这一胎的代价。
-    if (random(state) < stillbirthChance(bearer.vigor ?? 1)) {
-      bearer.tolerance -= CONFIG.breedToleranceCost;
-      pen.breed = 0;
-      events.push({ type: 'warn', pen: penIdx, stillbirth: true, msg: '这一胎没有成型。母体照样耗掉了这一次。' });
-      if (bearer.tolerance <= 0) {
-        const name = leavePenCorpse(state, bearer, 'exhausted', pen, penSlotOf(pen, bearer.uid));
-        events.push({ type: 'warn', pen: penIdx, exhausted: true, msg: `${name} 在繁育中耗尽了耐受度，力竭而死` });
-        return { kind: 'exhausted' };
-      }
-      return { kind: 'stillbirth' };
-    }
+    // 死胎：跨蛋组先过一次 30%，再按母方体质过一次——两个独立判定
+    const crossStill = mismatch && random(state) < CONFIG.crossGroupStillbirth;
+    const weakStill = random(state) < stillbirthChance(mother.vigor ?? 1);
+    const stillborn = crossStill || weakStill;
 
-    // 先产下这一胎，再判力竭——母体的最后一胎不会被吞掉
-    bearer.tolerance -= CONFIG.breedToleranceCost;
-    revealEggGroups(state, a, b);
-    const dexId = childSpecies(a, b);
-    const egg = dexId ? createEgg(state, dexId, [a, b]) : null;
-    if (egg) {
-      state.stats.bred += 1;
-      events.push({ type: 'egg', pen: penIdx, msg: `配种成功：孵化器中多了一枚 ${sp(dexId).zh} 的蛋` });
-    }
+    // 死胎也照常付这一胎的代价，只是没有产出
+    mother.tolerance -= motherCost;
+    if (fatherCost) father.tolerance -= fatherCost;
     pen.breed = 0;
-    if (bearer.tolerance <= 0) {
-      const name = leavePenCorpse(state, bearer, 'exhausted', pen, penSlotOf(pen, bearer.uid));
-      events.push({ type: 'warn', pen: penIdx, exhausted: true, msg: `${name} 在繁育中耗尽了耐受度，力竭而死` });
+    if (stillborn) {
+      events.push({ type: 'warn', pen: penIdx, stillbirth: true, msg: '这一胎没有成型。母体照样耗掉了这一次。' });
+    } else {
+      const dexId = childSpecies(a, b);
+      const egg = dexId ? createEgg(state, dexId, [a, b], BRED_SOURCE, mismatch) : null;
+      if (egg) {
+        state.stats.bred += 1;
+        events.push(
+          mismatch
+            ? { type: 'egg', pen: penIdx, mutant: true, msg: `配种成功：孵化器中多了一枚 ${sp(dexId).zh} 的蛋，但它看起来不对劲` }
+            : { type: 'egg', pen: penIdx, msg: `配种成功：孵化器中多了一枚 ${sp(dexId).zh} 的蛋` }
+        );
+      }
     }
+
+    // 先产出（或先记录死胎），再判力竭——母体的最后一胎不会被吞掉
+    const motherDied = exhaustIfNeeded(state, mother, pen, penIdx, events);
+    if (!motherDied) exhaustIfNeeded(state, father, pen, penIdx, events);
+    if (stillborn) return { kind: motherDied ? 'exhausted' : 'stillbirth' };
     return { kind: 'egg' };
   }
 
-  // 不孕 / 不育：不会产蛋，但也不会因此争斗
+  // 不孕 / 不育：不会产蛋，也不会因此争斗
   if (comp.sterile) {
     pen.breed = 0;
     events.push({ type: 'warn', pen: penIdx, sterile: true, msg: `${comp.reason}，本次无法繁育` });
     return { kind: 'sterile' };
   }
 
-  // 注定配不成但也不该打架（双百变怪 / 未发现蛋组 / 两个无性别）
-  if (comp.quiet) {
-    pen.breed = 0;
-    events.push({ type: 'info', pen: penIdx, quiet: true, msg: comp.reason });
-    return { kind: 'quiet' };
-  }
-
-  // 没能配成：争斗
-  const [weak, strong] = weakerOf(a, b);
-  const weakName = sp(weak.dexId).zh;
-  const strongName = sp(strong.dexId).zh;
-  const why = fightReason(a, b, comp);
-  // 只有异性且蛋组不匹配才永久锁定组合；同性、无性别等不锁定
-  if (a.gender !== b.gender && comp.code === 'egg-group') lockFailedPair(state, a, b);
-  leavePenCorpse(state, weak, 'fight', pen, penSlotOf(pen, weak.uid));
-  state.stats.fights = (state.stats.fights || 0) + 1;
+  // 注定配不成（双百变怪 / 未发现蛋组 / 无性别 / 同性）
   pen.breed = 0;
-  events.push({ type: 'warn', pen: penIdx, fight: true, code: comp.code || 'other', msg: `${why}，争斗中 ${weakName} 伤重不治` });
-  const survivor = monByUid(state, strong.uid);
-  if (survivor) {
-    survivor.tolerance -= CONFIG.fightToleranceLoss;
-    if (survivor.tolerance <= 0) {
-      leavePenCorpse(state, survivor, 'fight', pen, penSlotOf(pen, survivor.uid));
-      events.push({ type: 'warn', pen: penIdx, fight: true, msg: `${strongName} 也在争斗中耗尽了耐受度，伤重不治` });
-    } else {
-      events.push({ type: 'warn', pen: penIdx, fight: true, msg: `${strongName} 在争斗中受了伤` });
-    }
-  }
-  return { kind: 'fight' };
+  events.push({ type: 'info', pen: penIdx, quiet: true, msg: comp.reason });
+  return { kind: 'quiet' };
 }
 
 // ---------- 围栏争斗 ----------
@@ -1806,7 +1784,7 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
         slot.auto = false;
         continue;
       }
-      if (isResearched(state, mon.dexId)) {
+      if (isResearched(state, mon.dexId) || mon.mutant) {
         slot.auto = false;
         continue;
       }
@@ -1863,7 +1841,6 @@ export function tick(state, dtDays, realSeconds = dtDays * CONFIG.secondsPerDay)
         events.push({
           type: quiet ? 'info' : 'warn',
           pen: i,
-          ...(st.kind === 'locked' ? { failedPair: true } : {}),
           ...(st.kind === 'sterile' ? { sterile: true } : {}),
           ...(quiet ? { quiet: true } : {}),
           msg: quiet ? st.reason : `${st.reason}，本次无法繁育`,

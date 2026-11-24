@@ -18,11 +18,49 @@ function toleranceGray(mon) {
 }
 const spriteFilter = (mon) => {
   const parts = [];
+  if (mon?.mutant) {
+    parts.push(mutantFilterUrl(mon));
+    parts.push('hue-rotate(140deg)', 'saturate(.72)', 'contrast(1.2)');
+  }
   const g = toleranceGray(mon);
   if (g > 0) parts.push(`grayscale(${g.toFixed(3)})`);
-  if (mon?.shiny) parts.push('drop-shadow(0 0 6px rgba(255,215,106,.95))');
+  if (mon?.shiny && !mon?.mutant) parts.push('drop-shadow(0 0 6px rgba(255,215,106,.95))');
   return parts.length ? ` style="filter:${parts.join(' ')}"` : '';
 };
+
+// 畸形体：按父母物种哈希一个湍流位移滤镜，同一对永远长得一样
+const mutantFilters = new Map();
+function mutantFilterUrl(mon) {
+  const mix = mon?.mix || [mon?.dexId ?? 0, 0];
+  const seed = (((mix[0] || 0) * 73856093) ^ ((mix[1] || 0) * 19349663)) >>> 0;
+  const id = `warp-${mix[0] || 0}-${mix[1] || 0}`;
+  if (!mutantFilters.has(id)) {
+    mutantFilters.set(id, true);
+    const defs = document.getElementById('fx-defs');
+    if (defs && !document.getElementById(id)) {
+      const NS = 'http://www.w3.org/2000/svg';
+      const f = document.createElementNS(NS, 'filter');
+      f.setAttribute('id', id);
+      f.setAttribute('x', '-35%'); f.setAttribute('y', '-35%');
+      f.setAttribute('width', '170%'); f.setAttribute('height', '170%');
+      const t = document.createElementNS(NS, 'feTurbulence');
+      t.setAttribute('type', 'fractalNoise');
+      t.setAttribute('baseFrequency', '0.03 0.06');
+      t.setAttribute('numOctaves', '3');
+      t.setAttribute('seed', String(seed % 997));
+      t.setAttribute('result', 'n');
+      const d = document.createElementNS(NS, 'feDisplacementMap');
+      d.setAttribute('in', 'SourceGraphic');
+      d.setAttribute('in2', 'n');
+      d.setAttribute('scale', '12');
+      d.setAttribute('xChannelSelector', 'R');
+      d.setAttribute('yChannelSelector', 'G');
+      f.append(t, d);
+      defs.append(f);
+    }
+  }
+  return `url(#${id})`;
+}
 const applyToleranceFilter = (img, mon) => {
   if (!img) return;
   const parts = [];
@@ -66,7 +104,7 @@ export function setExperimentLoading(enabled = true, overrideMs = null) {
 
 // 底部 TAB：培育 / 实验室 / 围栏 / 经营 / 研究笔记
 const TABS = ['pens', 'lab', 'idle', 'market', 'dex'];
-const AUTO_PAUSE_TABS = new Set(['lab', 'dex']);
+const AUTO_PAUSE_TABS = new Set(['dex']);
 let activeTab = 'pens';
 let autoPausedSpeed = null;
 // 围栏分段开关：培育相关 / 其它
@@ -386,7 +424,7 @@ function handleAction(act, d) {
       break;
     }
     case 'idle-section': {
-      const next = d.section === 'others' ? 'others' : 'related';
+      const next = ['others', 'mutant'].includes(d.section) ? d.section : 'related';
       if (next !== idleSection) {
         idleSection = next;
         sig.idle = null;
@@ -780,7 +818,6 @@ function ensureEggs() {
           <div class="egg-shape"></div>
           <div>
             <div class="nm">${s2.zh}</div>
-            <div class="egg-grp">蛋组 ${L.eggGroupsDisplay(S, egg.dexId)}</div>
             <div class="sub" id="egg-${egg.uid}-left">孵化中 · ${egg.daysLeft.toFixed(1)} 天</div>
           </div>
         </div>
@@ -843,7 +880,7 @@ function ensureLab() {
         return `<button class="slot empty lab-empty" data-act="open-lab-picker" data-slot="${i}">＋<br />放入实验对象</button>`;
       }
       const spc = sp(mon.dexId);
-      const done = L.isResearched(S, mon.dexId);
+      const done = mon.mutant || L.isResearched(S, mon.dexId);
       const auto = !!slot.auto;
       const assistChk = L.canAssignAssistant(S, i);
       const canExtract = L.canFinalExtraction(S, i).ok;
@@ -878,10 +915,14 @@ function ensureLab() {
         </div>
         <div class="lab-stat"><span>耐受度</span><b id="lab-${i}-tol">${Math.round(mon.tolerance)} / ${maxTolerance(mon)}</b></div>
         <div class="bar hap" style="width:100%"><i id="lab-${i}-tolbar" style="width:0%"></i></div>
-        <div class="lab-stat"><span>研究进度</span><b id="lab-${i}-res">${L.researchPercent(S, mon.dexId)}%</b></div>
-        <div class="bar study" style="width:100%"><i id="lab-${i}-resbar" style="width:0%"></i></div>
+        ${
+          mon.mutant
+            ? '<div class="lab-note">没有研究价值</div>'
+            : `<div class="lab-stat"><span>研究进度</span><b id="lab-${i}-res">${L.researchPercent(S, mon.dexId)}%</b></div>
+        <div class="bar study" style="width:100%"><i id="lab-${i}-resbar" style="width:0%"></i></div>`
+        }
         ${auto ? '<div class="lab-note auto">助手研究中</div>' : ''}
-        ${done ? '<div class="lab-note">研究已完成</div>' : ''}
+        ${done && !mon.mutant ? '<div class="lab-note">研究已完成</div>' : ''}
         ${slot.assistant && !auto ? '<div class="lab-note">助手在旁边看着</div>' : ''}
         <div class="lab-actions">
           ${actions.join('')}
@@ -1048,10 +1089,10 @@ function ensureIdle() {
   sig.idle = s;
   const host = $('#idle');
   if (!host) return;
-  const { related, others } = L.idleSections(S);
+  const { related, others, mutants } = L.idleSections(S);
   const corpses = S.idleCorpses || [];
   const bullyUids = new Set(L.idleConflicts(S).map((c) => c.weakestUid));
-  if (!related.length && !others.length && !corpses.length) {
+  if (!related.length && !others.length && !mutants.length && !corpses.length) {
     host.innerHTML = '<div class="empty-tip">围栏是空的——所有宝可梦都在培育栏或实验室里。</div>';
     return;
   }
@@ -1075,13 +1116,14 @@ function ensureIdle() {
   host.innerHTML =
     sec('related', related) +
     sec('others', others) +
+    (mutants.length ? sec('mutant', mutants) : '') +
     (corpses.length
       ? `<div class="idle-sec" data-sec="corpse"><div class="idle-sec-title">遗体<span>${corpses.length} 具待处理</span></div>${corpseHtml}</div>`
       : '');
 }
 
 function patchIdle() {
-  const { related, others } = L.idleSections(S);
+  const { related, others, mutants } = L.idleSections(S);
   const corpses = S.idleCorpses || [];
   const conflicts = L.idleConflicts(S);
 
@@ -1095,11 +1137,19 @@ function patchIdle() {
     setText(tabOthers, `其它（${others.length}）`);
     tabOthers.classList.toggle('on', idleSection === 'others');
   }
+  const tabMutant = el('idle-tab-mutant');
+  if (tabMutant) {
+    // 只在真有畸体时出现这一段
+    tabMutant.classList.toggle('hidden', !mutants.length);
+    setText(tabMutant, `畸体（${mutants.length}）`);
+    tabMutant.classList.toggle('on', idleSection === 'mutant');
+  }
 
   const hint = $('#idle-hint');
   if (hint) {
     const extra = conflicts.length ? ` · ${conflicts.length} 组霸凌` : ' · 不参与繁育与研究';
-    hint.textContent = `${related.length + others.length} 只闲置${corpses.length ? ` · 遗体 ${corpses.length} 具` : ''}${extra}`;
+    const total = related.length + others.length + mutants.length;
+    hint.textContent = `${total} 只闲置${corpses.length ? ` · 遗体 ${corpses.length} 具` : ''}${extra}`;
   }
   const bullyUids = new Set(conflicts.map((c) => c.weakestUid));
   for (const m of [...related, ...others]) {
@@ -1603,27 +1653,27 @@ function expJournalRowsHtml(dexId = null, limit = 50) {
 function pickerModalHtml(penIdx, slot) {
   const pen = S.pens[penIdx];
   const other = L.monByUid(S, slot === 'a' ? pen?.b : pen?.a);
-  const blocked = other ? L.failedPartners(S, other.dexId) : new Set();
   const body = S.mons
     .filter((m) => !L.labContains(S, m.uid) && L.penIndex(S, m.uid) === -1)
+    // 同性直接不列出（无性别、百变怪照常出现）
+    .filter((m) => !other || m.uid === other.uid || m.gender !== other.gender || m.gender === 'x' || L.isDitto(m))
+    .filter((m) => !other || !L.isDitto(other) || !L.isDitto(m))
     .map((m) => {
       const s = sp(m.dexId);
-      const isBlocked = !!other && m.dexId !== other.dexId && blocked.has(m.dexId);
-      // 近亲：血统层面的提示；蛋组高亮：只用“已识别”的蛋组，不揭示未知
-      const kin = !!other && L.isKin(other, m);
+      // 近亲：只在惩罚明显时提示（直系 / 同胞 / 表亲 / 二代表亲）
+      const kin = !!other && L.kinTier(other, m).multiplier != null;
       const eggMatch = !!other && L.sharesKnownEggGroup(S, other.dexId, m.dexId);
-      const card = `<button class="pick${isBlocked ? ' blocked' : ''}${researchedCls(m)}${eggMatch ? ' egg-match' : ''}" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}" ${isBlocked ? 'disabled' : ''}>
+      return `<button class="pick${researchedCls(m)}${eggMatch ? ' egg-match' : ''}" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}">
         ${monNoTag(m)}
         <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m)} alt="" />
         <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}${kin ? '<span class="kin-badge">近亲</span>' : ''}</span>
         <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)}${L.sterilityLabel(m) ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
-      return card;
     })
     .join('');
   return modalShell(
     `选择宝可梦 → 栏位 ${penIdx + 1}${other ? `（与 ${sp(other.dexId).zh} 配对）` : ''}`,
-    `<div class="picker-list">${body || '<div class="empty-tip">没有空闲的宝可梦；实验室里的和已在其他栏位的都不能放入。</div>'}</div>`
+    `<div class="picker-list">${body || '<div class="empty-tip">没有可放入的宝可梦；实验室里的和已在其他栏位的都不能放入。</div>'}</div>`
   );
 }
 

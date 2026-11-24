@@ -1,7 +1,7 @@
 // 规则数据层：数值、文案、静态表与纯函数。
 // 这里不依赖运行时状态，也不 import 逻辑层；调参优先改这个文件。
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export const CONFIG = {
   secondsPerDay: 12,
@@ -44,8 +44,7 @@ export const CONFIG = {
   maleToleranceFactor: 1.25,
   // 正常繁育：承担损耗的一方（母体；无雌性时是百变怪）每次产蛋消耗的耐受度
   breedToleranceCost: 40,
-  // 体质系数：近亲子代 = min(双亲) × 0.85，下限 0.5；非近亲 = 均值 + 0.2（封顶 1）
-  kinVigorFactor: 0.85,
+  // 体质系数：近亲子代 = min(双亲) × 对应档位乘数，下限 0.5；非近亲 = 均值 + 0.2（封顶 1）
   vigorFloor: 0.5,
   hybridVigorBonus: 0.2,
   // 个体出生时的稀有特质：闪光 1/4096，不孕/不育 2/4096（约为闪光两倍）
@@ -64,8 +63,19 @@ export const CONFIG = {
   threatLossRatio: 0.5,
   threatToleranceRatio: 0.06,
   threatMinToleranceRatio: 0.1,
-  // 繁育失败时，留在栏位里的那只会掉这么多耐受度
-  fightToleranceLoss: 28,
+  // 繁育：近亲乘数按「共同祖先深度」分档（直系单独处理，永远最重）
+  kinTierDirect: 0.7,
+  kinTier1: 0.78,
+  kinTier2: 0.88,
+  kinTier3: 0.95,
+  // 跨蛋组繁育：先过一次死胎，活下来的都是畸形体
+  crossGroupStillbirth: 0.3,
+  crossGroupMotherCost: 44,
+  crossGroupFatherCost: 12,
+  // 畸形体：体质触底、不育、不进图鉴、不推进研究
+  mutantVigor: 0.5,
+  mutantSellFactor: 0.17,
+  mutantSamples: 1,
   // 花钱让蛋贩子再送一批蛋
   marketRefreshCost: 60,
   // 蛋贩子换货：每换一次更贵，但价格会随天数回落；每两周自动换货
@@ -86,7 +96,7 @@ export const CONFIG = {
   assistantProgressPerSec: 0.5,
   assistantTolerancePerSec: 3.86,
   assistantGoldPerSec: 6.4,
-  saveKey: 'rocket-simulator-save-v5',
+  saveKey: 'rocket-simulator-save-v6',
 };
 
 export const STAT_KEYS = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];

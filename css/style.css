@@ -2167,24 +2167,6 @@ p {
   color: var(--muted);
 }
 
-.pick.blocked {
-  position: relative;
-  opacity: 1;
-  border-color: rgba(255, 107, 122, 0.55);
-  background: rgba(12, 21, 37, 0.8);
-  cursor: not-allowed;
-}
-
-.pick.blocked::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  border-radius: inherit;
-  background: rgba(5, 10, 18, 0.32);
-  pointer-events: none;
-}
-
 /* 蛋组高亮：只用“已识别”的蛋组。绿框很弱，不占布局、不加文字 */
 .pick.egg-match {
   box-shadow: inset 0 0 0 1px rgba(110, 231, 183, 0.5);

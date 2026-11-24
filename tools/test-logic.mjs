@@ -673,12 +673,12 @@ check(!!br1Egg, '正常繁育产蛋', br1Egg ? sp(br1Egg.dexId).zh : '无');
 check(br1Egg?.dexId === 21, '蛋的物种是母方的最初形态', `(${br1Egg?.dexId})`);
 check(mom.tolerance === maxTolerance(mom) - CONFIG.breedToleranceCost, '母体因繁育掉耐受度', `(${mom.tolerance})`);
 check(dad.tolerance === maxTolerance(dad), '父方不掉耐受度');
-check(L.knownEggGroups(br, 16).includes('flying') && L.knownEggGroups(br, 21).includes('flying'), '繁育成功后确认交汇蛋组');
-check(L.eggGroupsDisplay(br, 16) === '飞行', '确认后蛋组显示中文', L.eggGroupsDisplay(br, 16));
+check(L.knownEggGroups(br, 16).length === 0 && L.knownEggGroups(br, 21).length === 0, '繁育成功不再揭示蛋组');
+check(L.eggGroupsDisplay(br, 16) === '？？？', '繁育后蛋组仍是未知', L.eggGroupsDisplay(br, 16));
 check(br1Events.some((e) => e.type === 'egg'), '产蛋有日志');
 check(br1Egg?.source === BRED_SOURCE, '繁育蛋的来源是培育栏自产', `(${br1Egg?.source})`);
 
-// 双蛋组物种：只确认交汇的那个
+// 蛋组只在研究 100% 时揭示
 const br2 = L.newGame(4101);
 const farfetchd = L.createMon(br2, 83, 10, { gender: 'm' }); // 飞行 / 陆上
 const doduo = L.createMon(br2, 84, 10, { gender: 'f' }); // 飞行
@@ -687,9 +687,12 @@ br2.pens = [{ a: farfetchd.uid, b: doduo.uid, breed: 0 }];
 br2.eggs = [];
 br2.market = [];
 L.tick(br2, 3);
-check(L.knownEggGroups(br2, 83).includes('flying'), '大葱鸭只确认了飞行组');
-check(!L.knownEggGroups(br2, 83).includes('ground'), '陆上组仍未确认');
-check(L.eggGroupsDisplay(br2, 83) === '飞行 / ？？？', '未知蛋组显示 ???', L.eggGroupsDisplay(br2, 83));
+check(L.knownEggGroups(br2, 83).length === 0, '繁育不揭示大葱鸭的蛋组');
+check(L.eggGroupsDisplay(br2, 83) === '？？？ / ？？？', '未知蛋组显示 ？？？', L.eggGroupsDisplay(br2, 83));
+br2.research[83] = 0;
+L.addResearch(br2, 83, L.researchRequirement(83));
+check(L.knownEggGroups(br2, 83).includes('flying') && L.knownEggGroups(br2, 83).includes('ground'), '研究 100% 揭示全部蛋组');
+check(L.eggGroupsDisplay(br2, 83) === '飞行 / 陆上', '研究后蛋组显示中文', L.eggGroupsDisplay(br2, 83));
 
 // 百变怪 + 雄性：损耗落在百变怪身上，雄性不掉耐受
 const dtState = L.newGame(4107);
@@ -708,7 +711,7 @@ check(!!dittoEgg, '百变怪与雄性可以繁育');
 check(dittoEgg?.dexId === 25, '蛋是雄性的最初形态', `(${dittoEgg ? sp(dittoEgg.dexId).zh : '无'})`);
 check(ditto.tolerance === maxTolerance(ditto) - CONFIG.breedToleranceCost, '损耗落在百变怪身上', `(${ditto.tolerance})`);
 check(dMale.tolerance === maxTolerance(dMale), '雄性不掉耐受度', `(${dMale.tolerance})`);
-check(L.knownEggGroups(dtState, 132).includes('ditto'), '百变怪确认了自己的蛋组');
+check(L.knownEggGroups(dtState, 132).length === 0, '百变怪的蛋组也不再由繁育确认');
 check(L.knownEggGroups(dtState, 25).length === 0, '对方的蛋组仍然未知');
 
 // 百变怪 + 雌性：有母体时仍由雌性承担
@@ -737,58 +740,53 @@ check(L.sterilityLabel(noLimitMale) === '', '正常雄性没有性冷淡标记')
 check(L.compatibility(noLimitMale, noLimitFemale).ok === true, '正常雄性可继续配种');
 check(L.compatibility(noLimitMale, noLimitFemale).cold === undefined, '兼容性判定不再返回性冷淡状态');
 
-// 条件不符：较弱的一只被放生，另一只掉耐受
+// 蛋组不匹配：不再争斗，改为「先过一次死胎，活下来的是畸形体」
 const br3 = L.newGame(4102);
 const strong = L.createMon(br3, 16, 30, { gender: 'm' }); // 波波 Lv30
 const weakMon = L.createMon(br3, 74, 3, { gender: 'f' }); // 小拳石 Lv3，异性但蛋组不匹配
+strong.tolerance = 999;
+weakMon.tolerance = 999;
 br3.mons = [strong, weakMon];
 br3.pens = [{ a: strong.uid, b: weakMon.uid, breed: 0 }];
 br3.eggs = [];
 br3.market = [];
-const fightEv = L.tick(br3, 3);
-check(L.monByUid(br3, weakMon.uid) === null, '争斗中较弱的一只被放生');
-check(strong.tolerance === maxTolerance(strong) - CONFIG.fightToleranceLoss, '另一只掉耐受度', `(${strong.tolerance})`);
-check(br3.stats.bred === 0 && br3.eggs.length === 0, '争斗不产蛋');
-check(fightEv.some((e) => e.type === 'warn'), '争斗有警告日志');
-check(fightEv.some((e) => e.msg.includes('伤重不治')), '争斗文案使用死亡表述');
-check(!('breedFails' in br3), '不再写入配对失败记录');
-check(L.failedPair(br3, strong.dexId, 74) && L.failedPartners(br3, strong.dexId).has(74), '蛋组不匹配关系可查询');
-check(br3.failedPairs?.includes([strong.dexId, 74].sort((x, y) => x - y).join('-')), '蛋组不匹配组合永久锁定');
-const newGeodude = L.createMon(br3, 74, 5, { gender: 'm' });
-br3.mons.push(newGeodude);
-check(!L.assignPen(br3, 0, 'b', newGeodude.uid).ok, '曾配对失败的物种不能再次同栏');
-br3.pens[0] = { a: strong.uid, b: newGeodude.uid, breed: 999 };
-br3.eggs = [];
-const blockedEvents = L.tick(br3, 0.1);
-check(br3.eggs.length === 0 && br3.stats.fights === 1, '旧状态同栏也不会再繁育或争斗');
-check(blockedEvents.some((e) => e.failedPair), '同栏旧状态给出失败提示');
-const fightEvent = fightEv.find((e) => e.fight);
-check(fightEvent?.pen === 0, '争斗事件带栏位索引，供 UI 播放撞击动效');
-check(br3.stats.fights === 1, '争斗计数');
+let crossEgg = null;
+for (let i = 0; i < 80 && !crossEgg; i++) {
+  L.tick(br3, 0.25);
+  if (br3.eggs.length) crossEgg = { ...br3.eggs[0] };
+}
+check(!!crossEgg, '蛋组不匹配仍能产出蛋');
+check(crossEgg?.mutant === true, '跨蛋组的后代是畸形体');
+check(crossEgg?.sterile === true, '畸形体不育');
+check(crossEgg?.vigor === CONFIG.mutantVigor, '畸形体质地触底', `(${crossEgg?.vigor})`);
+check(crossEgg?.mix?.[1] === 74 && crossEgg?.mix?.length === 2, '畸形体记住父母物种', JSON.stringify(crossEgg?.mix));
+check(!!L.monByUid(br3, weakMon.uid) && !!L.monByUid(br3, strong.uid), '跨蛋组不再死一只');
+check(weakMon.tolerance < 999 && strong.tolerance < 999, '跨蛋组父母双方都掉耐受度');
 
-// 同性配对引发的争斗不计入配对失败记录
+// 父方耐受不足：跨蛋组配对会把它一起耗死
+const br3b = L.newGame(4213);
+const crossDad = L.createMon(br3b, 16, 30, { gender: 'm' });
+const crossMom = L.createMon(br3b, 74, 30, { gender: 'f' });
+crossDad.tolerance = 1;
+crossMom.tolerance = 999;
+br3b.mons = [crossDad, crossMom];
+br3b.pens = [{ a: crossDad.uid, b: crossMom.uid, breed: 0 }];
+br3b.eggs = [];
+br3b.market = [];
+L.tick(br3b, 3);
+check(L.monByUid(br3b, crossDad.uid) === null, '父方耐受不足会力竭而死');
+
+// 同性：入口已拦，万一同栏也只静默，不打斗
 const sameSexState = L.newGame(4109);
 const ssA = L.createMon(sameSexState, 16, 30, { gender: 'm' });
 const ssB = L.createMon(sameSexState, 16, 3, { gender: 'm' });
 sameSexState.mons = [ssA, ssB];
 sameSexState.pens = [{ a: ssA.uid, b: ssB.uid, breed: 0 }];
 sameSexState.eggs = [];
-sameSexState.market = [];
-L.tick(sameSexState, 3);
-check(L.monByUid(sameSexState, ssB.uid) === null, '同性争斗仍会死亡');
-check(!('breedFails' in sameSexState), '同性争斗不写入失败记录');
-check((sameSexState.failedPairs || []).length === 0, '同性争斗不生成永久失败组合');
-
-// 争斗后耐受见底：剩下那只也会被放生（用满级个体，避免升级回耐受干扰判定）
-const br4 = L.newGame(4103);
-const s4a = L.createMon(br4, 16, CONFIG.maxLevel, { gender: 'm' });
-const s4b = L.createMon(br4, 74, 3, { gender: 'm' });
-s4a.tolerance = 10;
-br4.mons = [s4a, s4b];
-br4.pens = [{ a: s4a.uid, b: s4b.uid, breed: 0 }];
-br4.eggs = [];
-L.tick(br4, 3);
-check(L.monByUid(br4, s4a.uid) === null, '争斗后耐受见底也会被放生');
+const ssEv = L.tick(sameSexState, 3);
+check(!!L.monByUid(sameSexState, ssA.uid) && !!L.monByUid(sameSexState, ssB.uid), '同性不再争斗致死');
+check(sameSexState.eggs.length === 0, '同性不产蛋');
+check(ssEv.some((e) => e.quiet), '同性给出静默提示');
 
 // 母体耐受不足：繁育失败、不产蛋、母体放生（满级个体，避免升级回耐受）
 const br5 = L.newGame(4104);
@@ -802,7 +800,6 @@ const b5ev = L.tick(br5, 3);
 check(br5.eggs.length === 0, '母体撑不住时不产蛋');
 check(L.monByUid(br5, b5f.uid) === null, '母体被放生');
 check(!('breedFails' in br5), '繁育力竭不再写入失败记录');
-check((br5.failedPairs || []).length === 0 && !L.failedPair(br5, 16, 21), '力竭不永久锁定物种组合');
 check(b5ev.some((e) => e.type === 'warn' && e.msg.includes('繁育')), '繁育失败有提示');
 
 // 母体损耗节奏：约 3 只后代后被放生（满级个体不升级，只留一个栏位避免后代自己配对）
@@ -890,58 +887,43 @@ check(mxEv.some((e) => e.quiet), '无性别与有性别给出静默提示');
 check(!mxEv.some((e) => e.fight), '无性别与有性别不触发争斗事件');
 check(mixedQuiet.pens[0].breed === 0, '无性别与有性别不积累繁育条');
 
-// 同性争斗：文案点明性别，且不锁定组合
+// 同性：静默，不再争斗
 const sameSexMsg = L.newGame(4202);
 const ssM1 = L.createMon(sameSexMsg, 16, 30, { gender: 'm' });
 const ssM2 = L.createMon(sameSexMsg, 16, 3, { gender: 'm' });
 sameSexMsg.mons = [ssM1, ssM2];
 sameSexMsg.pens = [{ a: ssM1.uid, b: ssM2.uid, breed: 0 }];
 sameSexMsg.eggs = [];
-const ssEv = L.tick(sameSexMsg, 3);
-const ssFight = ssEv.find((e) => e.fight);
-check(!!ssFight && ssFight.code === 'same-sex', '同性争斗标记 same-sex', ssFight?.code);
-check(!!ssFight && ssFight.msg.includes('两只都是雄性'), '同性争斗文案点明性别', ssFight?.msg);
-check((sameSexMsg.failedPairs || []).length === 0, '同性争斗不锁定物种组合');
+const ssEv2 = L.tick(sameSexMsg, 3);
+check(!ssEv2.some((e) => e.fight), '同性不再触发争斗事件');
+check(ssEv2.some((e) => e.quiet), '同性给出静默提示');
+check(!!L.monByUid(sameSexMsg, ssM1.uid) && !!L.monByUid(sameSexMsg, ssM2.uid), '同性两只都还活着');
 
-// 蛋组不匹配：文案单独说明，并写入锁定
+// 蛋组不匹配：不再锁对，也不再打架
 const eggMsg = L.newGame(4203);
-const birdA = L.createMon(eggMsg, 16, CONFIG.maxLevel, { gender: 'm' }); // 满级不会在 tick 里进化
-const rockB = L.createMon(eggMsg, 74, 3, { gender: 'f' });
+const birdA = L.createMon(eggMsg, 16, CONFIG.maxLevel, { gender: 'm' });
+const rockB = L.createMon(eggMsg, 74, CONFIG.maxLevel, { gender: 'f' });
+birdA.tolerance = 999;
+rockB.tolerance = 999;
 eggMsg.mons = [birdA, rockB];
 eggMsg.pens = [{ a: birdA.uid, b: rockB.uid, breed: 0 }];
 eggMsg.eggs = [];
 const egEv = L.tick(eggMsg, 3);
-const egFight = egEv.find((e) => e.fight);
-check(!!egFight && egFight.code === 'egg-group', '蛋组不匹配标记 egg-group', egFight?.code);
-check(!!egFight && egFight.msg.includes('蛋组不合'), '蛋组不匹配的文案单独说明', egFight?.msg);
-check(L.failedPair(eggMsg, 16, 74), '异性蛋组不匹配写入永久锁定');
-
-// 锁定的对只警告一次，不重复刷屏
-const lockTwice = L.newGame(4205);
-const lockA = L.createMon(lockTwice, 16, 10, { gender: 'm' });
-const lockB = L.createMon(lockTwice, 74, 10, { gender: 'f' });
-lockTwice.mons = [lockA, lockB];
-lockTwice.failedPairs = ['16-74'];
-lockTwice.pens = [{ a: lockA.uid, b: lockB.uid, breed: 5 }];
-lockTwice.eggs = [];
-const lockEv1 = L.tick(lockTwice, 0.1);
-const lockEv2 = L.tick(lockTwice, 0.1);
-check(lockEv1.some((e) => e.failedPair), '锁定的对第一次会警告');
-check(!lockEv2.some((e) => e.failedPair), '锁定的对不会重复警告');
-check((lockTwice.stats.fights || 0) === 0, '锁定的对不争斗');
-check(lockTwice.pens[0].breed === 0, '锁定的对不空转繁育条');
-check(L.failedPair(lockTwice, 16, 74), '锁定关系持续保留');
+check(!egEv.some((e) => e.fight), '蛋组不匹配不再触发争斗');
+check(!!L.monByUid(eggMsg, birdA.uid) && !!L.monByUid(eggMsg, rockB.uid), '蛋组不匹配两只都还活着');
+check(!('failedPairs' in eggMsg), '不再写入永久锁定');
 
 // 培育栏遗体：占位 + 付费处理
 const penCorpse = L.newGame(4206);
 const pcA = L.createMon(penCorpse, 16, 30, { gender: 'm' });
 const pcB = L.createMon(penCorpse, 74, 3, { gender: 'f' });
+pcB.tolerance = 10; // 一发就力竭
 penCorpse.mons = [pcA, pcB];
 penCorpse.pens = [{ a: pcA.uid, b: pcB.uid, breed: 0 }];
 penCorpse.eggs = [];
 L.tick(penCorpse, 3);
 const pcPen = penCorpse.pens[0];
-check(!!pcPen.bCorpse && pcPen.b === null, '争斗死者留下遗体占住位置', JSON.stringify(pcPen).slice(0, 60));
+check(!!pcPen.bCorpse && pcPen.b === null, '力竭死者留下遗体占住位置', JSON.stringify(pcPen).slice(0, 60));
 check(L.penCorpseCost(penCorpse, 0, 'b') === CONFIG.penCorpseProcessCost, '遗体处理费用固定 6 资金');
 const pcSpare = L.createMon(penCorpse, 16, 5, { gender: 'f' });
 penCorpse.mons.push(pcSpare);
@@ -972,24 +954,24 @@ const kMom = L.createMon(kinData, 21, CONFIG.maxLevel, { gender: 'f' });
 kinData.mons = [kDad, kMom];
 kinData.pens = [{ a: kDad.uid, b: kMom.uid, breed: 0 }];
 kinData.eggs = [];
-check(kDad.ancestors.length === 0 && kDad.gen === 0, '初始个体没有血统记录');
+check(Object.keys(kDad.ancestors).length === 0 && kDad.gen === 0, '初始个体没有血统记录');
 // 分步推进：一次 tick 跨过 2.5 天会让新蛋当帧孵出
 for (let i = 0; i < 40 && !kinData.eggs.length; i++) L.tick(kinData, 0.25);
 const kinEgg1 = kinData.eggs[0];
 check(!!kinEgg1, '血统用例：正常产蛋');
-check(kinEgg1?.ancestors?.includes(kDad.uid) && kinEgg1?.ancestors?.includes(kMom.uid), '蛋记录双亲 uid');
+check(kinEgg1?.ancestors?.[kDad.uid] === 1 && kinEgg1?.ancestors?.[kMom.uid] === 1, '蛋记录双亲与深度 1');
 check(kinEgg1?.gen === 1, '蛋的世代为 1', `(${kinEgg1?.gen})`);
 kinEgg1.daysLeft = 0.01;
 L.tick(kinData, 0.1);
 const kinChild = L.monByUid(kinData, kinEgg1.uid);
-check(!!kinChild && kinChild.gen === 1 && kinChild.ancestors.includes(kDad.uid), '孵出的个体继承血统');
+check(!!kinChild && kinChild.gen === 1 && kinChild.ancestors?.[kDad.uid] === 1, '孵出的个体继承血统');
 const kMom2 = L.createMon(kinData, 21, CONFIG.maxLevel, { gender: kinChild.gender === 'f' ? 'm' : 'f' });
 kinData.mons.push(kMom2);
 kinData.pens = [{ a: kinChild.uid, b: kMom2.uid, breed: 0 }];
 for (let i = 0; i < 40 && !kinData.eggs.length; i++) L.tick(kinData, 0.25);
 const kinEgg2 = kinData.eggs[0];
 check(kinEgg2?.gen === 2, '第二代蛋的世代为 2', `(${kinEgg2?.gen})`);
-check(kinEgg2?.ancestors?.includes(kDad.uid), '祖先并集保留更早的辈分');
+check(kinEgg2?.ancestors?.[kDad.uid] === 2, '祖先深度随代际增加', `(${kinEgg2?.ancestors?.[kDad.uid]})`);
 
 // ---------- 近亲 / 体质 / 死胎 ----------
 const vig = L.newGame(4302);
@@ -999,13 +981,24 @@ check(vDadM.vigor === 1 && vMomF.vigor === 1, '外血个体体质为 1');
 check(vDadM.inbred === false, '外血个体不带近亲标记');
 check(!L.isKin(vDadM, vMomF), '无共同祖先不算近亲');
 
-// childVigor：近亲衰减 / 下限 / 非近亲回升
-check(L.childVigor({ vigor: 1 }, { vigor: 1 }, true) === 0.85, '近亲子代体质 ×0.85');
-check(L.childVigor({ vigor: 0.72 }, { vigor: 1 }, true) === 0.612, '第二代近亲继续衰减', `(${L.childVigor({ vigor: 0.72 }, { vigor: 1 }, true)})`);
-check(L.childVigor({ vigor: 0.5 }, { vigor: 1 }, true) === 0.5, '近亲子代体质触底 0.5');
-check(L.childVigor({ vigor: 1 }, { vigor: 1 }, false) === 1, '非近亲子代封顶 1');
-check(L.childVigor({ vigor: 0.5 }, { vigor: 0.5 }, false) === 0.7, '两条退化线互配 = 均值 +0.2', `(${L.childVigor({ vigor: 0.5 }, { vigor: 0.5 }, false)})`);
-check(L.childVigor({ vigor: 0.61 }, { vigor: 1 }, false) === 1, '外血能把退化品系拉回 1');
+// 分级近亲：直系 / 深度 1 / 2 / 3 / 三代以外
+const tierOf = (a, b) => L.kinTier({ uid: 'x', ancestors: a }, { uid: 'y', ancestors: b }).multiplier;
+check(L.kinTier({ uid: 'x', ancestors: {} }, { uid: 'y', ancestors: { x: 1 } }).multiplier === CONFIG.kinTierDirect, '亲子走直系最重档');
+check(tierOf({ p: 1 }, { p: 1 }) === CONFIG.kinTier1, '全同胞 = 深度 1');
+check(tierOf({ p: 2 }, { p: 1 }) === CONFIG.kinTier2, '叔侄 = 深度 2');
+check(tierOf({ p: 3 }, { p: 3 }) === CONFIG.kinTier3, '二代表亲 = 深度 3');
+check(tierOf({ p: 4 }, { p: 4 }) === null, '三代以外不惩罚');
+check(L.isKin({ uid: 'k3', ancestors: { k9: 1 } }, { uid: 'k4', ancestors: { k9: 1 } }), '共享祖先算近亲');
+check(!L.isKin({ uid: 'k5', ancestors: { k7: 1 } }, { uid: 'k6', ancestors: { k8: 1 } }), '无共享祖先不算近亲');
+
+// childVigor：按档位乘数衰减 / 下限 / 非近亲回升
+check(L.childVigor({ vigor: 1 }, { vigor: 1 }, CONFIG.kinTierDirect) === 0.7, '直系子代 ×0.70');
+check(L.childVigor({ vigor: 1 }, { vigor: 1 }, CONFIG.kinTier1) === 0.78, '同胞子代 ×0.78');
+check(L.childVigor({ vigor: 0.78 }, { vigor: 1 }, CONFIG.kinTier1) === 0.608, '第二代继续衰减', `(${L.childVigor({ vigor: 0.78 }, { vigor: 1 }, CONFIG.kinTier1)})`);
+check(L.childVigor({ vigor: 0.5 }, { vigor: 1 }, CONFIG.kinTierDirect) === 0.5, '近亲子代体质触底 0.5');
+check(L.childVigor({ vigor: 1 }, { vigor: 1 }, null) === 1, '非近亲子代封顶 1');
+check(L.childVigor({ vigor: 0.5 }, { vigor: 0.5 }, null) === 0.7, '两条退化线互配 = 均值 +0.2', `(${L.childVigor({ vigor: 0.5 }, { vigor: 0.5 }, null)})`);
+check(L.childVigor({ vigor: 0.61 }, { vigor: 1 }, null) === 1, '外血能把退化品系拉回 1');
 
 // 体质系数乘在耐受上限上
 const vgTolState = L.newGame(4308);
@@ -1013,23 +1006,20 @@ const vgFullMon = L.createMon(vgTolState, 21, 30, { gender: 'f' });
 const vgHalfMon = L.createMon(vgTolState, 21, 30, { gender: 'f', vigor: 0.5 });
 check(maxTolerance(vgHalfMon) === Math.max(1, Math.round(maxTolerance(vgFullMon) * 0.5)), '体质系数乘在耐受上限上', `(${maxTolerance(vgFullMon)}→${maxTolerance(vgHalfMon)})`);
 
-// isKin：亲子 / 共同祖先 / 无交集
-check(L.isKin({ uid: 'k1', ancestors: [] }, { uid: 'k2', ancestors: ['k1'] }), '亲子算近亲');
-check(L.isKin({ uid: 'k3', ancestors: ['k9'] }, { uid: 'k4', ancestors: ['k9'] }), '共享祖先算近亲');
-check(!L.isKin({ uid: 'k5', ancestors: ['k7'] }, { uid: 'k6', ancestors: ['k8'] }), '无共享祖先不算近亲');
+// isKin 的旧断言已并入上面的分级用例
 
 // 祖先表不再截断：母体祖先很多时，父本也不会被挤出
 const ancState = L.newGame(4304);
 const ancDad = L.createMon(ancState, 16, CONFIG.maxLevel, { gender: 'm' });
 const ancMom = L.createMon(ancState, 21, CONFIG.maxLevel, { gender: 'f' });
-ancMom.ancestors = Array.from({ length: 10 }, (_, i) => `x${i}`);
+ancMom.ancestors = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`x${i}`, 1]));
 ancState.mons = [ancDad, ancMom];
 ancState.pens = [{ a: ancDad.uid, b: ancMom.uid, breed: 0 }];
 ancState.eggs = [];
 for (let i = 0; i < 40 && !ancState.eggs.length; i++) L.tick(ancState, 0.25);
 const ancEgg = ancState.eggs[0];
-check(ancEgg?.ancestors?.includes(ancDad.uid), '祖先表不截断：父本仍在表内');
-check(ancEgg?.ancestors?.length === 12, '祖先表 = 父本 + 母本 + 10 条祖辈', `(${ancEgg?.ancestors?.length})`);
+check(ancEgg?.ancestors?.[ancDad.uid] === 1, '祖先表不截断：父本仍在表内');
+check(Object.keys(ancEgg?.ancestors || {}).length === 12, '祖先表 = 父本 + 母本 + 10 条祖辈', `(${Object.keys(ancEgg?.ancestors || {}).length})`);
 
 // 力竭：先产下最后一胎，再死
 const exh = L.newGame(4305);
@@ -1562,6 +1552,24 @@ check(specialRound.mons.find((m) => m.uid === shinyMon.uid)?.sterile === true, '
 
 // 市场与数值
 check(L.sellPrice(a) > 0 && L.sellPrice(a) < L.monValue(a), '售价低于估值');
+
+// ---------- 畸形体：出口与实验室 ----------
+const mut = L.newGame(4400);
+const mutMon = L.createMon(mut, 21, 20, { gender: 'f', mutant: true, vigor: 0.5, sterile: true, mix: [21, 74] });
+const normalMon = L.createMon(mut, 21, 20, { gender: 'f' });
+mut.mons.push(mutMon, normalMon);
+check(L.sellPrice(mutMon) < L.sellPrice(normalMon) * 0.3, '畸形体售价远低于正常个体', `(${L.sellPrice(mutMon)} vs ${L.sellPrice(normalMon)})`);
+const mutMate = L.createMon(mut, 21, 20, { gender: 'm' });
+check(L.compatibility(mutMon, mutMate).sterile === true, '畸形体不能配种');
+check(L.deliverableMons(mut, { kind: 'any', need: { level: 1 } }).every((m) => !m.mutant), '畸形体不进入交单候选');
+L.assignLab(mut, 0, mutMon.uid);
+check(!L.startExperiment(mut, mutMon.uid, L.experimentsFor(21)[0].id).ok, '畸形体做不了实验');
+mut.gold = 1000;
+const canFx = L.canFinalExtraction(mut, 0);
+check(canFx.ok, '畸形体不需要研究就能终末榨取', canFx.msg);
+const mutFx = L.finalExtraction(mut, 0);
+check(mutFx.ok && mutFx.amount === CONFIG.mutantSamples, '畸形体只产固定数量样本', `(${mutFx.amount})`);
+check(L.samplesOf(mut, 21) === CONFIG.mutantSamples, '样本记在母方物种名下');
 
 console.log(`\n${failures === 0 ? '全部通过 ✓' : `${failures} 项失败 ✗`}`);
 process.exit(failures ? 1 : 0);

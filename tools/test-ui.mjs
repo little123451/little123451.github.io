@@ -127,22 +127,20 @@ L.removeFromPen(state, specialMon.uid);
 state.mons = state.mons.filter((m) => m.uid !== specialMon.uid);
 UI.render();
 
-// 曾配对失败的物种在选择伙伴时禁用
+// 选择伙伴时同性不列出（不是禁用）
 const pairA = L.createMon(state, 16, 5, { gender: 'f' });
 const pairB = L.createMon(state, 21, 5, { gender: 'm' });
-state.mons.push(pairA, pairB);
+const pairC = L.createMon(state, 19, 5, { gender: 'f' });
+state.mons.push(pairA, pairB, pairC);
 L.assignPen(state, 2, 'a', pairA.uid);
-state.failedPairs = ['16-21'];
 UI.render();
 click('open-picker', { pen: '2', slot: 'b' });
-const blockedBtn = makeEl('#modal').innerHTML.match(new RegExp(`data-uid="${pairB.uid}"[^>]*disabled`));
-check(!!blockedBtn, '曾配对失败的物种按钮禁用');
-check(!makeEl('#modal').innerHTML.includes('配对失败') && !makeEl('#modal').innerHTML.includes('class="pr"'), '锁定卡片不显示失败原因');
-check(!makeEl('#modal').innerHTML.includes('解除记忆'), '锁定卡片不再提供解除入口');
+const genderPickHtml = makeEl('#modal').innerHTML;
+check(genderPickHtml.includes(`data-uid="${pairB.uid}"`), '异性伙伴正常列出');
+check(!genderPickHtml.includes(`data-uid="${pairC.uid}"`), '同性伙伴不出现在选择器里');
 click('close');
 L.removeFromPen(state, pairA.uid);
-state.mons = state.mons.filter((m) => m.uid !== pairA.uid && m.uid !== pairB.uid);
-state.failedPairs = [];
+state.mons = state.mons.filter((m) => m.uid !== pairA.uid && m.uid !== pairB.uid && m.uid !== pairC.uid);
 UI.render();
 
 // 速度按钮、手动保存、底部 TAB
@@ -154,8 +152,8 @@ check(saveCalls === 1, '手动保存调用存档钩子');
 for (const tab of ['pens', 'lab', 'idle', 'market', 'dex']) {
   click('tab', { tab });
   check(makeEl(`#page-${tab}`).classList.contains('active'), `TAB 切换：${tab}`);
-  if (tab === 'lab') check(UI.getSpeed() === 0, '切到实验室自动暂停');
-  if (tab === 'idle') check(UI.getSpeed() === 2, '离开实验室恢复速度');
+  if (tab === 'lab') check(UI.getSpeed() === 2, '切到实验室不再暂停');
+  if (tab === 'idle') check(UI.getSpeed() === 2, '离开实验室保持速度');
   if (tab === 'dex') check(UI.getSpeed() === 0, '切到研究笔记自动暂停');
 }
 click('tab', { tab: 'pens' });
@@ -756,25 +754,24 @@ check(makeEl('#egg-hint').textContent.includes('已满'), '蛋位满时孵化器
 check(makeEl('#pen-0-warn').textContent.includes('孵化器已满'), '蛋位满时培育栏说明暂停原因', makeEl('#pen-0-warn').textContent);
 check(!makeEl('#pen-0-breed').classList.contains('paused'), '蛋位满不属于“注定配不成”，条不置灰');
 
-// 锁定的配对：条置灰，显示原因但不提供解除入口
-failUi.failedPairs = ['16-21'];
+// 蛋组不匹配不再锁对：条照常走，不再显示“曾配对失败”
 failUi.eggs = [];
 UI.render();
-check(makeEl('#pen-0-breed').classList.contains('paused'), '锁定的配对把繁育条置灰');
-check(!makeEl('#pen-0-warn').textContent.includes('解除记忆'), '锁定的配对不再提供解除按钮');
-check(makeEl('#pen-0-warn').textContent.includes('曾配对失败'), '锁定的配对说明原因', makeEl('#pen-0-warn').textContent);
+check(!makeEl('#pen-0-breed').classList.contains('paused'), '蛋组不匹配不再把繁育条置灰');
+check(!makeEl('#pen-0-warn').textContent.includes('曾配对失败'), '不再出现配对失败提示', makeEl('#pen-0-warn').textContent);
 
 // 培育栏遗体：占位卡片 + 付费处理入口
 const corpseUi = L.newGame(8889);
 const cuA = L.createMon(corpseUi, 16, CONFIG.maxLevel, { gender: 'm' });
 const cuB = L.createMon(corpseUi, 74, 3, { gender: 'f' });
+cuB.tolerance = 10; // 一发就力竭
 corpseUi.mons = [cuA, cuB];
 corpseUi.pens = [{ a: cuA.uid, b: cuB.uid, breed: 0 }];
 corpseUi.eggs = [];
 L.tick(corpseUi, 3);
 UI.setState(corpseUi);
 UI.render();
-check(makeEl('#pens').innerHTML.includes('遗体'), '培育栏显示遗体', );
+check(makeEl('#pens').innerHTML.includes('遗体'), '培育栏显示遗体');
 check(makeEl('#pens').innerHTML.includes('process-pen-corpse'), '培育栏遗体带处理按钮');
 check(makeEl('#pens').innerHTML.includes(`🪙 ${CONFIG.penCorpseProcessCost}`), '遗体处理按钮标价');
 
@@ -867,7 +864,7 @@ click('close');
 const breedUi = L.newGame(8895);
 const bKinDad = L.createMon(breedUi, 16, 30, { gender: 'm' });
 const bKinDau = L.createMon(breedUi, 21, 5, { gender: 'f' });
-bKinDau.ancestors = [bKinDad.uid];
+bKinDau.ancestors = { [bKinDad.uid]: 1 };
 bKinDau.gen = 1;
 bKinDau.inbred = true;
 const bOther = L.createMon(breedUi, 25, 5, { gender: 'f' }); // 皮卡丘：陆上 / 妖精
@@ -980,6 +977,42 @@ check(makeEl('#modal').innerHTML.includes('处置完成 · 样本已耗尽'), '�
 check(L.samplesOf(fxUi, 16) > 0, '样本入库');
 click('close');
 check(makeEl('#lab').innerHTML.includes('已死亡'), '榨取后实验台显示遗体');
+
+// ---------- 畸形体：围栏第三段 / 渲染 / 蛋卡 / 实验室 ----------
+const mutUi = L.newGame(8899);
+const mutA = L.createMon(mutUi, 143, 10, { gender: 'f', mutant: true, vigor: 0.5, sterile: true, mix: [143, 10] });
+const normA = L.createMon(mutUi, 143, 10, { gender: 'm' });
+mutUi.mons = [mutA, normA];
+mutUi.eggs = [];
+UI.setState(mutUi);
+UI.render();
+const mutSegHtml = makeEl('#idle').innerHTML;
+check(mutSegHtml.includes('data-sec="mutant"'), '围栏出现畸体段');
+check(mutSegHtml.includes('warp-'), '畸形体卡片带湍流滤镜');
+check(!makeEl('#idle-tab-mutant').classList.contains('hidden'), '有畸体时开关出现');
+
+// 没有畸体：段与开关一起消失
+mutUi.mons = [normA];
+UI.render();
+check(!makeEl('#idle').innerHTML.includes('data-sec="mutant"'), '没有畸体时不渲染畸体段');
+check(makeEl('#idle-tab-mutant').classList.contains('hidden'), '没有畸体时开关隐藏');
+
+// 蛋卡简化：只剩物种与剩余天数
+mutUi.eggs = [{ uid: 'e9', dexId: 16, daysLeft: 3, total: 6, ivs: {}, nature: 'hardy' }];
+UI.render();
+const eggSimpleHtml = makeEl('#eggs').innerHTML;
+check(!eggSimpleHtml.includes('蛋组'), '蛋卡不再显示蛋组');
+check(eggSimpleHtml.includes('孵化中'), '蛋卡只留物种与剩余天数');
+
+// 实验室：畸形体没有实验，直接可榨取
+mutUi.eggs = [];
+mutUi.mons = [mutA, normA];
+L.assignLab(mutUi, 0, mutA.uid);
+UI.render();
+const labMutHtml = makeEl('#lab').innerHTML;
+check(labMutHtml.includes('没有研究价值'), '实验室标注畸形体没有研究价值');
+check(!labMutHtml.includes('data-act="open-exp"'), '畸形体没有实验按钮');
+check(labMutHtml.includes('终末榨取'), '畸形体直接可终末榨取');
 
 console.log(`\n${failures === 0 ? 'UI 测试全部通过 ✓' : `${failures} 项失败 ✗`}`);
 process.exit(failures ? 1 : 0);
