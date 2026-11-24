@@ -325,6 +325,9 @@ UI.render();
 click('open-help');
 check(makeEl('#modal').innerHTML.includes('玩法说明'), '玩法弹窗可打开');
 check(makeEl('#modal').innerHTML.includes('经验糖果'), '玩法说明提到经验糖果');
+check(makeEl('#modal').innerHTML.includes('畸形体'), '玩法说明包含畸形体');
+check(makeEl('#modal').innerHTML.includes('畸体'), '玩法说明提到围栏畸体段');
+check(!makeEl('#modal').innerHTML.includes('争斗'), '玩法说明不再提已移除的争斗');
 click('close');
 check(!makeEl('#modal').innerHTML.includes('玩法说明'), '弹窗可关闭');
 click('open-help');
@@ -1013,6 +1016,15 @@ const labMutHtml = makeEl('#lab').innerHTML;
 check(labMutHtml.includes('没有研究价值'), '实验室标注畸形体没有研究价值');
 check(!labMutHtml.includes('data-act="open-exp"'), '畸形体没有实验按钮');
 check(labMutHtml.includes('终末榨取'), '畸形体直接可终末榨取');
+check((makeEl('#lab-0-img').style.filter || '').includes('warp-'), '实验室畸形体保持湍流贴图');
+
+// 畸形体不出现在培育栏选择器
+const mutPickMon = L.createMon(mutUi, 143, 5, { gender: 'f', mutant: true, vigor: 0.5, sterile: true, mix: [143, 10] });
+mutUi.mons = [mutA, normA, mutPickMon];
+UI.render();
+click('open-picker', { pen: '1', slot: 'a' });
+check(!makeEl('#modal').innerHTML.includes(mutPickMon.uid), '畸形体不出现在培育栏选择器');
+click('close');
 
 console.log(`\n${failures === 0 ? 'UI 测试全部通过 ✓' : `${failures} 项失败 ✗`}`);
 process.exit(failures ? 1 : 0);

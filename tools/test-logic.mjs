@@ -1561,6 +1561,8 @@ mut.mons.push(mutMon, normalMon);
 check(L.sellPrice(mutMon) < L.sellPrice(normalMon) * 0.3, '畸形体售价远低于正常个体', `(${L.sellPrice(mutMon)} vs ${L.sellPrice(normalMon)})`);
 const mutMate = L.createMon(mut, 21, 20, { gender: 'm' });
 check(L.compatibility(mutMon, mutMate).sterile === true, '畸形体不能配种');
+const mutPenGuard = L.assignPen(mut, 0, 'a', mutMon.uid);
+check(mutPenGuard.ok === false && /不育/.test(mutPenGuard.msg || ''), '畸形体不能放进培育栏', mutPenGuard.msg);
 check(L.deliverableMons(mut, { kind: 'any', need: { level: 1 } }).every((m) => !m.mutant), '畸形体不进入交单候选');
 L.assignLab(mut, 0, mutMon.uid);
 check(!L.startExperiment(mut, mutMon.uid, L.experimentsFor(21)[0].id).ok, '畸形体做不了实验');

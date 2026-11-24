@@ -1044,6 +1044,8 @@ export function assignPen(state, penIdx, slot, uidMon) {
   const key = slot === 'b' ? 'b' : 'a';
   // 该位置还躺着遗体：先处理掉才能放新的
   if (pen[`${key}Corpse`]) return { ok: false, msg: '这个位置还留着一具遗体，先处理掉' };
+  // 畸形体不育，放进培育栏只会白占位置
+  if (mon.mutant) return { ok: false, msg: '畸形体不育，不能放进培育栏' };
   // 未发现蛋组的物种（传说 / 幻兽）永远配不了，别让它们进去白送一条命
   const groups = sp(mon.dexId)?.eggGroups || [];
   if (!isDitto(mon) && groups.includes('no-eggs')) {
