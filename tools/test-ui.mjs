@@ -867,9 +867,17 @@ UI.render();
 click('open-species', { id: '16' });
 const dateLogHtml = makeEl('#modal').innerHTML;
 const dateLogDesc = L.experimentsFor(16).find((e) => e.id === 'measure').desc;
+const sampleLogDesc = L.experimentsFor(16).find((e) => e.id === 'sample').desc;
+const battleLogDesc = L.experimentsFor(16).find((e) => e.id === 'battle').desc;
+const at = (s) => dateLogHtml.indexOf(s);
 check(dateLogHtml.includes(dateLogDesc) && !dateLogHtml.includes(`「${dateLogDesc}」`), '实验行为描述不带引号');
 check((dateLogHtml.match(/<span class="d">D55<\/span>/g) || []).length === 2, '同一个体同日只显示一次日期');
 check((dateLogHtml.match(/<span class="d">D4<\/span>/g) || []).length === 1, '日期变化时重新显示');
+check(at(dateLogDesc) < at(sampleLogDesc) && at(sampleLogDesc) < at(battleLogDesc), '组内按天倒序排列');
+check(
+  at(dateLogDesc) < at('<span class="d">D55</span>') && at('<span class="d">D55</span>') < at(battleLogDesc),
+  '日期标在当天最后一条（靠下）'
+);
 click('close');
 
 // ---------- 繁育：近亲标记 / 蛋组绿框 / 个体值 ----------

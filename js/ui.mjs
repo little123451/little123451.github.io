@@ -1630,20 +1630,23 @@ function speciesModalHtml(dexId) {
 // 实验日志：同一个体（编号）的多条记录在视觉上合并成一组，
 // 组头只出现一次编号/物种/等级；组内同一天的连续实验只显示一次日期。
 function expJournalRowsHtml(dexId = null, limit = 50) {
-  const entries = (S.expJournal || []).filter((e) => dexId == null || e.dexId === dexId).slice(0, limit);
+  const entries = (S.expJournal || [])
+    .filter((e) => dexId == null || e.dexId === dexId)
+    .slice(0, limit)
+    .map((e, i) => ({ e, i }));
   if (!entries.length) return '<div class="empty-tip">还没有实验日志。</div>';
 
   const groups = [];
   const byNo = new Map();
-  for (const e of entries) {
-    const key = e.no == null ? 'none' : String(e.no);
+  for (const item of entries) {
+    const key = item.e.no == null ? 'none' : String(item.e.no);
     let g = byNo.get(key);
     if (!g) {
-      g = { no: e.no, dexId: e.dexId, level: e.level, rows: [] };
+      g = { no: item.e.no, dexId: item.e.dexId, level: item.e.level, rows: [] };
       byNo.set(key, g);
       groups.push(g);
     }
-    g.rows.push(e);
+    g.rows.push(item);
   }
 
   const rowHtml = (e, showDate) => {
@@ -1666,14 +1669,19 @@ function expJournalRowsHtml(dexId = null, limit = 50) {
     .map((g) => {
       const name = sp(g.dexId)?.zh || g.dexId;
       const noText = g.no == null ? '未编号' : `#${String(g.no).padStart(4, '0')}`;
+      // 组内按天倒序；同一天保持日志顺序（数组越前越新）。日期标在当天最后一条上，靠下。
+      const rows = g.rows
+        .slice()
+        .sort((a, b) => b.e.day - a.e.day || a.i - b.i)
+        .map((x) => x.e);
       return `<div class="exp-journal-group">
         <div class="exp-journal-head">
           <span class="no">${noText}</span>
           <span class="nm">${name}</span>
           <span class="lv">Lv.${g.level}</span>
         </div>
-        ${g.rows
-          .map((e, i) => rowHtml(e, i === 0 || g.rows[i - 1].day !== e.day))
+        ${rows
+          .map((e, i) => rowHtml(e, i === rows.length - 1 || rows[i + 1].day !== e.day))
           .join('')}
       </div>`;
     })
