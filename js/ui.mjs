@@ -380,7 +380,7 @@ function handleAction(act, d) {
       openModal('penlab', { uid: d.uid });
       break;
     case 'pen-to-lab': {
-      const r = L.sendPenToLab(S, d.uid, Number(d.slot));
+      const r = L.sendMonToLab(S, d.uid, Number(d.slot));
       toast(r.msg, r.ok ? 'good' : 'bad');
       closeModal();
       render();
@@ -1516,11 +1516,13 @@ function monModalHtml(uid) {
   const inPen = L.penIndex(S, mon.uid);
   const inLab = L.labContains(S, mon.uid);
   // 围栏里的个体不再给“放入栏位”快捷按钮：统一从培育栏空位的「放入宝可梦」进入
-  const penButtons =
-    !inLab && inPen >= 0
-      ? `<button class="ghost" data-act="open-pen-lab" data-uid="${mon.uid}">放入实验室</button>
+  const labButton = `<button class="ghost" data-act="open-pen-lab" data-uid="${mon.uid}">放入实验室</button>`;
+  const penButtons = inLab
+    ? ''
+    : inPen >= 0
+      ? `${labButton}
          <button class="ghost" data-act="unassign" data-uid="${mon.uid}">扔回围栏</button>`
-      : '';
+      : labButton;
   const idleHint =
     !inLab && inPen < 0
       ? '<div class="hint-line">要放进培育栏：点培育栏空位的「放入宝可梦」。</div>'

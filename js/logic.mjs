@@ -1312,12 +1312,15 @@ export function assignLab(state, slotIdx, uidMon) {
 
 // 培育栏详情页的「放入实验室」：先把它从栏位里摘出来，再按正常流程送进实验台。
 // assignLab 本身仍然只接受不在培育栏里的个体。
-export function sendPenToLab(state, uidMon, slotIdx) {
-  if (penIndex(state, uidMon) === -1) return { ok: false, msg: '它不在培育栏里' };
+// 把个体送进实验室：培育栏里的会先空出栏位，围栏里的直接送入
+export function sendMonToLab(state, uidMon, slotIdx) {
+  const mon = monByUid(state, uidMon);
+  if (!mon) return { ok: false, msg: '找不到宝可梦' };
+  if (labContains(state, uidMon)) return { ok: false, msg: '它已经在实验室里了' };
   const slot = state.lab[slotIdx];
   if (!slot) return { ok: false, msg: '实验室没有这个位置' };
   if (slot.uid || slot.corpse) return { ok: false, msg: '该实验台已被占用（含死亡个体）' };
-  removeFromPen(state, uidMon);
+  if (penIndex(state, uidMon) !== -1) removeFromPen(state, uidMon);
   return assignLab(state, slotIdx, uidMon);
 }
 

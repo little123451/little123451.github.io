@@ -283,7 +283,12 @@ const idleModal = makeEl('#modal').innerHTML;
 check(!idleModal.includes('放入栏位'), '围栏个体详情不再显示放入栏位按钮');
 check(!idleModal.includes('data-act="assign"'), '围栏个体详情没有快捷放入操作');
 check(idleModal.includes('喂经验糖果'), '围栏个体详情保留喂糖果');
+check(idleModal.includes('data-act="open-pen-lab"'), '围栏个体详情有放入实验室按钮');
 check(idleModal.includes('点培育栏空位'), '围栏个体详情提示从培育栏空位放入');
+click('close');
+click('open-mon', { uid: idler.uid });
+click('open-pen-lab', { uid: idler.uid });
+check(makeEl('#modal').innerHTML.includes('送进实验室'), '围栏个体可打开实验台选择');
 click('close');
 
 click('open-picker', { pen: '1', slot: 'a' });

@@ -1080,17 +1080,25 @@ mvState.pens = [
 ];
 const penToLabBlocked = L.assignLab(mvState, 0, mvA.uid);
 check(penToLabBlocked.ok === false, 'assignLab 不接受培育栏里的个体', penToLabBlocked.msg);
-const penToLab = L.sendPenToLab(mvState, mvA.uid, 0);
+const penToLab = L.sendMonToLab(mvState, mvA.uid, 0);
 check(penToLab.ok, '培育栏详情可以把个体送进实验室', penToLab.msg);
 check(L.penIndex(mvState, mvA.uid) === -1, '送进实验室后离开培育栏');
 check(mvState.pens[0].a === null && mvState.pens[0].breed === 0, '原栏位清空且繁育条归零');
 check(L.labContains(mvState, mvA.uid), '个体已经在实验室里');
-check(L.sendPenToLab(mvState, mvB.uid, 0).ok === false, '实验台被占用时不能把栏位个体送进去');
+check(L.sendMonToLab(mvState, mvB.uid, 0).ok === false, '实验台被占用时不能把栏位个体送进去');
 check(L.penIndex(mvState, mvB.uid) !== -1, '送入失败时个体仍留在培育栏');
 mvState.lab[0].corpse = { dexId: 16, no: null, level: 1, gender: 'm', day: 1, cause: 'overload' };
 mvState.lab[0].uid = null;
-check(L.sendPenToLab(mvState, mvB.uid, 0).ok === false, '有遗体的实验台不能送入');
+check(L.sendMonToLab(mvState, mvB.uid, 0).ok === false, '有遗体的实验台不能送入');
 check(L.penIndex(mvState, mvB.uid) !== -1, '遗体占位时个体仍留在培育栏');
+
+// 围栏个体也能直接送进实验室
+const idleLab = L.newGame(4314);
+const idleLabMon = L.createMon(idleLab, 16, 10, { gender: 'm' });
+idleLab.mons = [idleLabMon];
+const idleToLab = L.sendMonToLab(idleLab, idleLabMon.uid, 0);
+check(idleToLab.ok, '围栏个体可以直接送进实验室', idleToLab.msg);
+check(L.labContains(idleLab, idleLabMon.uid), '围栏个体已进入实验室');
 
 // ---------- 按物种累计花费 ----------
 const spendState = L.newGame(4306);
