@@ -1035,6 +1035,13 @@ const mutF0 = makeEl('#lab-0-img').style.filter || '';
 const mutF1 = makeEl('#lab-1-img').style.filter || '';
 check(mutF0.includes('warp-') && mutF1.includes('warp-') && mutF0 !== mutF1, '不同畸形体各有独立的扭曲形态');
 
+// 同一只在不同尺寸下参数等比换算，形状一致
+const look46 = UI.mutantLook(mutA, 46);
+const look132 = UI.mutantLook(mutA, 132);
+check(Math.abs(Number(look132.scale) / Number(look46.scale) - 132 / 46) < 0.02, '扭曲位移随渲染尺寸等比换算');
+check(Math.abs(Number(look46.baseX) / Number(look132.baseX) - 132 / 46) < 0.02, '湍流频率随尺寸反向换算');
+check(look46.hue === look132.hue && look46.seed === look132.seed, '同一只的形态参数不随尺寸变化');
+
 // 畸形体不出现在培育栏选择器
 const mutPickMon = L.createMon(mutUi, 143, 5, { gender: 'f', mutant: true, vigor: 0.5, sterile: true, mix: [143, 10] });
 mutUi.mons = [mutA, normA, mutB, mutPickMon];

@@ -16,20 +16,25 @@ function toleranceGray(mon) {
   const max = Math.max(1, maxTolerance(mon));
   return Math.max(0, Math.min(1, 1 - mon.tolerance / max));
 }
-// 统一的精灵滤镜：畸形体湍流 + 耐受灰度 + 闪光光晕；渲染与增量更新共用，避免互相覆盖
-function filterParts(mon) {
+// 统一的精灵滤镜：畸形体湍流 + 耐受灰度 + 闪光光晕；渲染与增量更新共用，避免互相覆盖。
+// SVG 湍流按元素像素运算，所以参数要按渲染尺寸等比换算（REF_SIZE 为基准），否则 46px 卡片和 132px 详情会是两副形状。
+const REF_SIZE = 96;
+// 与 css/style.css 里各处的 img 尺寸保持一致；改 CSS 尺寸时必须同步这里，否则扭曲形状会漂
+const SPRITE_SIZE = { pen: 64, lab: 46, idle: 46, detail: 132, picker: 38, hero: 48 };
+function filterParts(mon, size = REF_SIZE) {
   const parts = [];
   if (mon?.mutant) {
-    const look = mutantLook(mon);
-    parts.push(mutantFilterUrl(mon), `hue-rotate(${look.hue}deg)`, `saturate(${look.sat})`, `contrast(${look.contrast})`);
+    const look = mutantLook(mon, size);
+    ensureMutantFilter(look);
+    parts.push(`url(#${look.id})`, `hue-rotate(${look.hue}deg)`, `saturate(${look.sat})`, `contrast(${look.contrast})`);
   }
   const g = toleranceGray(mon);
   if (g > 0) parts.push(`grayscale(${g.toFixed(3)})`);
   if (mon?.shiny && !mon?.mutant) parts.push('drop-shadow(0 0 6px rgba(255,215,106,.95))');
   return parts;
 }
-const spriteFilter = (mon) => {
-  const parts = filterParts(mon);
+const spriteFilter = (mon, size = REF_SIZE) => {
+  const parts = filterParts(mon, size);
   return parts.length ? ` style="filter:${parts.join(' ')}"` : '';
 };
 
@@ -43,21 +48,24 @@ function hashText(text) {
   }
   return h;
 }
-function mutantLook(mon) {
-  const key = String(mon?.uid ?? `mix-${mon?.mix?.[0] ?? 0}-${mon?.mix?.[1] ?? 0}`);
+export function mutantLook(mon, size = REF_SIZE) {
+  const px = Math.max(1, Math.round(Number(size) || REF_SIZE));
+  const base = String(mon?.uid ?? `mix-${mon?.mix?.[0] ?? 0}-${mon?.mix?.[1] ?? 0}`);
+  const key = `${base}@${px}`;
   const hit = mutantLooks.get(key);
   if (hit) return hit;
-  let h = hashText(key);
+  let h = hashText(base);
   const next = () => {
     h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
     return h / 4294967296;
   };
+  const k = px / REF_SIZE;
   const look = {
-    id: `warp-${key}`,
+    id: `warp-${base}-${px}`,
     seed: Math.floor(next() * 997),
-    scale: (8 + next() * 8).toFixed(1),
-    baseX: (0.022 + next() * 0.018).toFixed(3),
-    baseY: (0.04 + next() * 0.03).toFixed(3),
+    scale: ((8 + next() * 8) * k).toFixed(2),
+    baseX: ((0.022 + next() * 0.018) / k).toFixed(5),
+    baseY: ((0.04 + next() * 0.03) / k).toFixed(5),
     hue: Math.round(80 + next() * 120),
     sat: (0.6 + next() * 0.25).toFixed(2),
     contrast: (1.1 + next() * 0.25).toFixed(2),
@@ -88,14 +96,9 @@ function ensureMutantFilter(look) {
   f.append(t, d);
   defs.append(f);
 }
-function mutantFilterUrl(mon) {
-  const look = mutantLook(mon);
-  ensureMutantFilter(look);
-  return `url(#${look.id})`;
-}
-const applyToleranceFilter = (img, mon) => {
+const applyToleranceFilter = (img, mon, size = REF_SIZE) => {
   if (!img) return;
-  img.style.filter = filterParts(mon).join(' ');
+  img.style.filter = filterParts(mon, size).join(' ');
 };
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
 const monNo = (m) => (m?.no ? `#${String(m.no).padStart(4, '0')}` : '');
@@ -614,7 +617,7 @@ function heroArtHtml(mons, emptyEmoji) {
   if (!mons.length) return `<span class="hero-empty">${emptyEmoji}</span>`;
   return mons
     .slice(0, 4)
-    .map((m) => `<img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)} alt="" />`)
+    .map((m) => `<img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m, SPRITE_SIZE.hero)} alt="" />`)
     .join('');
 }
 
@@ -734,7 +737,7 @@ function monSlotHtml(mon, pen, slot) {
   const s = sp(mon.dexId);
   return `<div class="slot filled ${mon.shiny ? 'shiny' : ''}${researchedCls(mon)}" id="pen-${pen}-${slot}" data-act="open-mon" data-uid="${mon.uid}" title="查看详情">
     ${monNoTag(mon)}
-    <img id="pen-${pen}-${slot}-img" src="${sprite(mon.dexId, mon.shiny)}"${imgFallback(mon.dexId, mon.shiny)}${spriteFilter(mon)} alt="${s.zh}" />
+    <img id="pen-${pen}-${slot}-img" src="${sprite(mon.dexId, mon.shiny)}"${imgFallback(mon.dexId, mon.shiny)}${spriteFilter(mon, SPRITE_SIZE.pen)} alt="${s.zh}" />
     <div class="nm">${s.zh}<span class="g">${L.genderZh(mon.gender)}</span>${mon.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
     <div class="lv" id="pen-${pen}-${slot}-lv">Lv.${mon.level}</div>
     ${L.sterilityLabel(mon) ? `<div class="sterile-badge">${L.sterilityLabel(mon)}</div>` : ''}
@@ -798,7 +801,7 @@ function patchPens() {
 function patchSlot(mon, pen, slot) {
   if (!mon) return;
   setText(el(`pen-${pen}-${slot}-lv`), `Lv.${mon.level}`);
-  applyToleranceFilter(el(`pen-${pen}-${slot}-img`), mon);
+  applyToleranceFilter(el(`pen-${pen}-${slot}-img`), mon, SPRITE_SIZE.pen);
   // 研究完成会改变卡片底色，这里实时切换，不再等结构签名变化
   const card = el(`pen-${pen}-${slot}`);
   if (card) card.classList.toggle('researched', L.isResearched(S, mon.dexId));
@@ -933,7 +936,7 @@ function ensureLab() {
       return `<div class="lab-card ${mon.shiny ? 'shiny' : ''}${researchedCls(mon)}${auto ? ' auto' : ''}" id="lab-${i}">
         ${monNoTag(mon)}
         <div class="lab-head">
-          <img id="lab-${i}-img" src="${sprite(mon.dexId, mon.shiny)}"${imgFallback(mon.dexId, mon.shiny)}${spriteFilter(mon)} alt="${spc.zh}" />
+          <img id="lab-${i}-img" src="${sprite(mon.dexId, mon.shiny)}"${imgFallback(mon.dexId, mon.shiny)}${spriteFilter(mon, SPRITE_SIZE.lab)} alt="${spc.zh}" />
           <div>
             <div class="nm">${spc.zh}${mon.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
             <div class="lv">Lv.${mon.level} · ${L.eggGroupsDisplay(S, mon.dexId)}${L.sterilityLabel(mon) ? ` · ${L.sterilityLabel(mon)}` : ''}</div>
@@ -973,7 +976,7 @@ function patchLab() {
     const pctRes = L.researchPercent(S, mon.dexId);
     setText(el(`lab-${i}-res`), `${pctRes}%`);
     setWidth(el(`lab-${i}-resbar`), pctRes);
-    applyToleranceFilter(el(`lab-${i}-img`), mon);
+    applyToleranceFilter(el(`lab-${i}-img`), mon, SPRITE_SIZE.lab);
     const card = el(`lab-${i}`);
     if (card) card.classList.toggle('researched', L.isResearched(S, mon.dexId));
   });
@@ -1101,7 +1104,7 @@ function idleMonCard(m, bullyUids) {
   const fighting = bullyUids.has(m.uid);
   return `<div class="idle-mon${fighting ? ' fighting' : ''}${m.shiny ? ' shiny' : ''}${researchedCls(m)}" id="idle-${m.uid}" data-act="open-mon" data-uid="${m.uid}" title="查看详情">
     ${monNoTag(m)}
-    <img id="idle-${m.uid}-img" src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m)} alt="${spc.zh}" />
+    <img id="idle-${m.uid}-img" src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m, SPRITE_SIZE.idle)} alt="${spc.zh}" />
     <div class="n">${spc.zh}<span class="g">${L.genderZh(m.gender)}</span>${m.shiny ? '<span class="shiny-badge">✨</span>' : ''}</div>
     <div class="lv" id="idle-${m.uid}-lv">Lv.${m.level}</div>
     <div class="egg-grp">${L.eggGroupsDisplay(S, m.dexId)}</div>
@@ -1180,7 +1183,7 @@ function patchIdle() {
   const bullyUids = new Set(conflicts.map((c) => c.weakestUid));
   for (const m of [...related, ...others]) {
     setText(el(`idle-${m.uid}-lv`), `Lv.${m.level}`);
-    applyToleranceFilter(el(`idle-${m.uid}-img`), m);
+    applyToleranceFilter(el(`idle-${m.uid}-img`), m, SPRITE_SIZE.idle);
     const card = el(`idle-${m.uid}`);
     if (card) {
       card.classList.toggle('fighting', bullyUids.has(m.uid));
@@ -1552,7 +1555,7 @@ function monModalHtml(uid) {
     s.zh,
     `
     <div class="detail">
-      <div class="detail-art"><img src="${art(mon.dexId, mon.shiny)}"${imgFallback(mon.dexId, mon.shiny)}${spriteFilter(mon)} alt="${s.zh}" /></div>
+      <div class="detail-art"><img src="${art(mon.dexId, mon.shiny)}"${imgFallback(mon.dexId, mon.shiny)}${spriteFilter(mon, SPRITE_SIZE.detail)} alt="${s.zh}" /></div>
       <div class="detail-meta">
         <div class="kv"><span class="k">编号</span><span class="v" style="font-variant-numeric:tabular-nums">${monNo(mon) || '未编号'}</span></div>
         <div class="kv"><span class="k">属性</span><span class="v">${typeBadges(s.types)}</span></div>
@@ -1694,7 +1697,7 @@ function pickerModalHtml(penIdx, slot) {
       const eggMatch = !!other && L.sharesKnownEggGroup(S, other.dexId, m.dexId);
       return `<button class="pick${researchedCls(m)}${eggMatch ? ' egg-match' : ''}" data-act="assign" data-pen="${penIdx}" data-slot="${slot}" data-uid="${m.uid}">
         ${monNoTag(m)}
-        <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m)} alt="" />
+        <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m, SPRITE_SIZE.picker)} alt="" />
         <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}${kin ? `<span class="kin-badge">${kin}</span>` : ''}</span>
         <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)}${L.sterilityLabel(m) ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
@@ -1740,7 +1743,7 @@ function deliverModalHtml(orderId) {
       const s = sp(m.dexId);
       return `<button class="pick${researchedCls(m)}" data-act="deliver" data-order="${order.id}" data-uid="${m.uid}">
         ${monNoTag(m)}
-        <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m)} alt="" />
+        <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m, SPRITE_SIZE.picker)} alt="" />
         <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}</span>
         <span class="ps">Lv.${m.level} · ${typeZh(s.types[0])} · ${L.eggGroupsDisplay(S, m.dexId)}${L.sterilityLabel(m) ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
@@ -1868,7 +1871,7 @@ function labPickerModalHtml(slot) {
       const s = sp(m.dexId);
       return `<button class="pick${researchedCls(m)}" data-act="assign-lab" data-slot="${slot}" data-uid="${m.uid}">
         ${monNoTag(m)}
-        <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m)} alt="" />
+        <img src="${sprite(m.dexId, m.shiny)}"${imgFallback(m.dexId, m.shiny)}${spriteFilter(m, SPRITE_SIZE.picker)} alt="" />
         <span class="pn">${s.zh} ${L.genderZh(m.gender)}${m.shiny ? ' ✨' : ''}</span>
         <span class="ps">Lv.${m.level} · ${L.eggGroupsDisplay(S, m.dexId)}${L.sterilityLabel(m) ? ` · ${L.sterilityLabel(m)}` : ''}</span>
       </button>`;
